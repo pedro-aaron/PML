@@ -27,7 +27,7 @@ Abril 2026
     4.10 Choice
     4.11 Facts
     4.12 Divider
-    4.13 Table
+    4.13 DTable
     4.14 Confirm
  5. Form (componente contenedor principal)
     5.1  Estructura general
@@ -510,16 +510,16 @@ Tabla de pares clave-valor.
 | `id`      | No        | string    | Identificador                     |
 | `columns` | No        | `1` / `2` | Columnas de layout. Default: `1`. |
 
-**Formato del contenido:** Una línea por par, `Clave: valor`.
+**Formato del contenido:** Cada entrada va envuelta en `[PML:fact]Clave: valor[/PML:fact]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
 
 **Ejemplo:**
 
 ```
 [PML:facts columns="2"]
-Producto: Nike Air Max 90
-Talla: 42
-Precio: $2,499 MXN
-Envío: Gratis
+[PML:fact]Producto: Nike Air Max 90[/PML:fact]
+[PML:fact]Talla: 42[/PML:fact]
+[PML:fact]Precio: $2,499 MXN[/PML:fact]
+[PML:fact]Envío: Gratis[/PML:fact]
 [/PML:facts]
 ```
 
@@ -541,26 +541,25 @@ Con texto:
 
 ---
 
-### 4.13 Table
+### 4.13 DTable
 
-Tabla de datos.
+Tabla de datos
 
-| Atributo    | Requerido | Tipo   | Descripción                                       |
-| ----------- | --------- | ------ | ------------------------------------------------- |
-| `id`        | Sí        | string | Identificador único                               |
-| `columns`   | Sí        | string | Nombres de columnas separados por coma            |
-| `highlight` | No        | string | Valor de la primera columna de la fila a resaltar |
+| Atributo  | Requerido | Tipo   | Descripción                            |
+| --------- | --------- | ------ | -------------------------------------- |
+| `id`      | Sí        | string | Identificador único                    |
+| `columns` | Sí        | string | Nombres de columnas separados por "\|" |
 
-**Formato del contenido:** Cada línea es una fila, valores separados por coma.
+**Formato del contenido:** Cada fila va envuelta en `[PML:dtrow]cel1|cel2|cel3[/PML:dtrow]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
 
 **Ejemplo:**
 
 ```
-[PML:table id="comparativa" columns="Plan,Precio,Agentes,Mensajes" highlight="Pro"]
-Básico,$9/mes,1,100/día
-Pro,$29/mes,10,Ilimitado
-Enterprise,Custom,Ilimitado,Ilimitado
-[/PML:table]
+[PML:dtable id="comparativa" columns="Plan|Precio|Agentes|Mensajes"]
+[PML:dtrow]Básico|$9/mes|1|100/día[/PML:dtrow]
+[PML:dtrow]Pro|$29/mes|10|Ilimitado[/PML:dtrow]
+[PML:dtrow]Enterprise|Custom|Ilimitado|Ilimitado[/PML:dtrow]
+[/PML:dtable]
 ```
 
 ---
