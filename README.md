@@ -54,6 +54,8 @@ Abril 2026
 
 PML es un lenguaje **ligero, legible para LLMs y ultra-eficiente en tokens** diseñado para que los agentes conversacionales rendericen componentes UI interactivos dentro de interfaces de chat.
 
+PML asume que todo chat es **multiusuario**. Una conversación 1:1 también es multiusuario: es un grupo mínimo de dos participantes. Una conversación grupal extiende el mismo modelo a más participantes. Por eso, las interacciones PML no son eventos privados del cliente local; afectan el historial compartido de la conversación.
+
 **Filosofía:**
 
 ```
@@ -70,6 +72,7 @@ El agente PROCESA y genera nuevo PML.
 Token-efficient    →  Más compacto que JSON, XML o cualquier alternativa
 LLM-friendly       →  Sintaxis regular y predecible, fácil de generar sin errores
 Chat-native        →  Diseñado para flujos conversacionales en móvil
+Multi-user first   →  Toda interacción afecta un historial compartido
 Renderer-powered   →  La lógica de negocio vive en el renderer, no en el agente
 Extensible         →  Nuevos componentes sin romper compatibilidad
 ```
@@ -587,9 +590,16 @@ Diálogo de confirmación.
 
 **Interacciones generadas:**
 
+Si el usuario confirma:
+
 ```
-[[CONFIRM]] id=eliminar-cuenta value=confirmed
-[[CONFIRM]] id=eliminar-cuenta value=cancelled
+[[INTERACTION]] id=eliminar-cuenta value=confirmed
+```
+
+Si el usuario cancela:
+
+```
+[[INTERACTION]] id=eliminar-cuenta value=cancelled
 ```
 
 ---
@@ -1286,13 +1296,13 @@ Reducción: ~62% menos tokens
 
 ### 6.1 Formatos de interacción
 
-| Formato                                            | Cuándo se usa                                    |
-| -------------------------------------------------- | ------------------------------------------------ |
-| `[[INTERACTION]] id=X value=Y`                     | Botón, choice, toggle, rating, URL, tab, section |
-| `[[FORM_SUBMIT]] id=X&campo1=valor1&campo2=valor2` | Envío de formulario                              |
-| `[[CONFIRM]] id=X value=confirmed`                 | Confirmación aceptada                            |
-| `[[CONFIRM]] id=X value=cancelled`                 | Confirmación rechazada                           |
-| `[[CHANGE]] id=X value=Y`                          | Cambio en tiempo real (solo si `live="true"`)    |
+| Formato                                            | Cuándo se usa                                          |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| `[[INTERACTION]] id=X value=Y`                     | Botón, choice, toggle, confirmación, URL, tab, section |
+| `[[FORM_SUBMIT]] id=X&campo1=valor1&campo2=valor2` | Envío de formulario                                    |
+| `[[CHANGE]] id=X value=Y`                          | Cambio en tiempo real (solo si `live="true"`)          |
+
+> No existe un formato separado para confirmaciones. Las confirmaciones aceptadas o rechazadas se envían como `[[INTERACTION]]` con `value=confirmed` o `value=cancelled`.
 
 ### 6.2 Flujo completo
 
@@ -1303,7 +1313,6 @@ Reducción: ~62% menos tokens
 │          │ ←─────────────────  │(renderer)│
 └──────────┘   [[INTERACTION]]  └──────────┘
                [[FORM_SUBMIT]]
-               [[CONFIRM]]
 ```
 
 ```
@@ -1528,86 +1537,197 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 ### 9.1 Principios
 
 ```
-1. EL CHAT INPUT ES SAGRADO
+1. TODO CHAT ES MULTIUSUARIO
+   Una conversación 1:1 es un grupo mínimo de dos participantes.
+   Una conversación grupal usa el mismo modelo con más participantes.
+   Toda interacción afecta el historial compartido.
+
+2. EL CHAT INPUT ES SAGRADO
    Solo desaparece cuando un Form está activo.
    Se restaura inmediatamente después del envío o cancelación.
 
-2. NUNCA SORPRENDER
+3. NUNCA SORPRENDER
    El agente siempre prepara al usuario antes de mostrar un Form.
    El usuario elige cuándo activarlo.
 
-3. UNA COSA A LA VEZ
+4. UNA COSA A LA VEZ
    En móvil, mode="stepped" es la mejor experiencia para 3+ campos.
 
-4. CANCELAR SIEMPRE ES POSIBLE
+5. CANCELAR SIEMPRE ES POSIBLE
    ✕ arriba, swipe down, o botón "Volver al chat".
 
-5. NADA SE PIERDE
+6. NADA SE PIERDE
    Los datos enviados quedan como resumen inline en el historial.
 ```
 
-### 9.2 Flujo de Form en chat
+### 9.1.1 Zonas y fases del renderer
+
+Esta subsección define el **modelo canónico** que la ChatApp usa para renderizar un mensaje PML. Es la base de toda la sección 9: cualquier diagrama por componente (§9.5–§9.18) describe cómo ese componente se reparte entre las **zonas** y se mueve entre las **fases** definidas aquí.
+
+#### 9.1.1.1 Modelo del mensaje
+
+Un mensaje PML del agente se descompone en dos clases de contenido:
 
 ```
-ESTADO 1 — PREPARACIÓN
-┌─────────────────────────┐
-│                         │
-│  [Historial de chat]    │
-│                         │
-│  Agente: Necesito tus   │
-│  datos para continuar.  │
-│                         │
-│  ┌───────────────────┐  │
-│  │ Completar datos   │  │ ← Botón de activación
-│  └───────────────────┘  │
-│                         │
-│ ┌─────────────────────┐ │
-│ │ Escribe un mensaje  │ │ ← Chat input ACTIVO
-│ └─────────────────────┘ │
-└─────────────────────────┘
+mensaje PML = narrativa + tarea
 
-ESTADO 2 — FORMULARIO ACTIVO
-┌─────────────────────────┐
-│  Datos de envío      ✕  │ ← Cerrar/cancelar
-│                         │
-│  Nombre                 │
-│  ┌───────────────────┐  │
-│  │ Pedro García      │  │ ← Campo activo + teclado
-│  └───────────────────┘  │
-│                         │
-│  ┌───────────────────┐  │
-│  │     Siguiente →   │  │ ← Navegación stepped
-│  └───────────────────┘  │
-│                         │
-│  ┌───────────────────┐  │
-│  │ ← Volver al chat  │  │ ← Escape alternativo
-│  └───────────────────┘  │
-│                         │
-│ ╔═════════════════════╗ │
-│ ║     [Teclado]       ║ │
-│ ╚═════════════════════╝ │
-└─────────────────────────┘
+  narrativa  → texto, markdown, imágenes, facts, dividers, dtable, url
+               (contenido pasivo; no requiere acción del usuario)
 
-ESTADO 3 — POST-ENVÍO
+  tarea      → un único componente interactivo del mensaje
+               (input, choice, toggle, button[s], confirm, form)
+               tarea = task_narrative + task_controls
+```
+
+**Invariante:** un mensaje contiene **0 o 1 tarea**, y **N piezas de narrativa**. Esta es la traducción operativa de la regla "un único punto de captura por turno": el renderer nunca tiene que resolver conflictos entre dos componentes interactivos compitiendo por la atención del usuario.
+
+#### 9.1.1.2 Las tres zonas
+
+El renderer divide la superficie del chat en tres zonas con propiedades distintas:
+
+| Zona              | Visibilidad          | Persistencia         | Interactiva | Contenido                                                       |
+| ----------------- | -------------------- | -------------------- | ----------- | --------------------------------------------------------------- |
+| `shared_history`  | Todos los participantes | Permanente, inmutable | No          | Mensajes pasados, narrativa, snapshots de tareas resueltas       |
+| `task_narrative`  | Privada al disparador | Efímera              | No          | Narrativa que enmarca la tarea en curso (texto, imagen, contexto) |
+| `task_controls`   | Privada al disparador | Efímera              | Sí          | El componente interactivo vivo de la tarea (único por turno)    |
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │   shared_history                                         │    │
+│  │   (compartido · inmutable · scrollable)                  │    │
+│  │                                                          │    │
+│  │   Mensajes pasados, narrativa, tareas resueltas          │    │
+│  │   como snapshots inmutables                              │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │   task_narrative                                         │    │
+│  │   (privado · efímero)                                    │    │
+│  │                                                          │    │
+│  │   Pregunta, encabezado, contexto que enmarca la tarea    │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │   task_controls                                          │    │
+│  │   (privado · efímero · interactivo · único por turno)    │    │
+│  │                                                          │    │
+│  │   El componente vivo: input, choice, buttons, etc.       │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Reglas de las zonas:**
+
+- Solo `shared_history` es persistente y visible para todos los participantes. `task_narrative` y `task_controls` son siempre privados al usuario disparador y efímeros (existen mientras la tarea no ha resuelto).
+- Solo puede haber **un `task_controls` activo** por conversación por usuario disparador en un momento dado. Esto se deriva de la invariante "0 o 1 tarea por mensaje".
+- Las zonas `task_*` no se anidan, no se apilan, no permiten scroll independiente. Son un overlay efímero sobre `shared_history`.
+
+#### 9.1.1.3 Las tres fases
+
+Toda tarea PML atraviesa el mismo lifecycle de renderización. Los nombres son canónicos:
+
+| Fase                | Quién la dispara             | Qué ocurre                                                                                              |
+| ------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `first_rendering`   | El agente (emite el mensaje) | El mensaje llega. Narrativa pinta en `task_narrative`. Controles pintan en `task_controls`. Privado al disparador. |
+| `live_capture`      | El usuario disparador        | El usuario interactúa con los controles. Feedback visual en `task_controls`. Sigue privado.              |
+| `final_rendering`   | La ChatApp                   | La tarea cierra. Snapshot inmutable de narrativa + tarea resuelta se promueve a `shared_history`. `task_narrative` y `task_controls` se vacían. |
+
+```
+   first_rendering        live_capture          final_rendering
+   ──────────────         ─────────────         ────────────────
+   El agente emite        El usuario actúa      El renderer congela
+   narrativa + tarea      sobre los controles   la tarea, promueve
+   a las zonas B y C      en zona C             snapshot a zona A
+   (privado)              (privado)             (compartido)
+```
+
+#### 9.1.1.4 Matriz zona × fase
+
+Resumen operativo de qué hay en cada zona en cada fase:
+
+```
+                  first_rendering         live_capture            final_rendering
+                  ─────────────────       ──────────────────      ──────────────────────────
+shared_history    (sin cambios)           (sin cambios)           snapshot inmutable de la
+                                                                  narrativa + tarea resuelta
+
+task_narrative    narrativa del mensaje   narrativa del mensaje   (vacío)
+                  (texto, imagen, etc.)   (sin cambios)
+
+task_controls     componente interactivo  componente + feedback   (vacío)
+                  vivo                    de la interacción
+```
+
+#### 9.1.1.5 Casos borde
+
+- **Mensaje sin tarea (solo narrativa).** No entra al lifecycle de tarea: la narrativa se renderiza directo en `shared_history` y es visible para todos los participantes desde el primer momento. `task_narrative` y `task_controls` no se usan. Esto refleja la convención universal de chat: un mensaje sin acción pendiente aparece inmediatamente en el historial común.
+- **Mensaje sin narrativa (solo tarea).** `task_narrative` queda vacía durante `first_rendering` y `live_capture`. En `final_rendering`, el snapshot en `shared_history` contiene solo la tarea resuelta. La spec permite emitir `[PML:buttons]` sin texto encima.
+- **Tarea cancelada o expirada.** Subcaso de `final_rendering`: las zonas `task_*` se vacían, pero el snapshot en `shared_history` registra el estado cancelado (no la tarea como si se hubiera resuelto). El renderer decide la apariencia visual del snapshot cancelado.
+
+#### 9.1.1.6 Lo que NO está en PML
+
+Las decisiones de **audiencia** (quién es el "disparador", quién ve las zonas privadas, quién recibe el snapshot final) **no se expresan en PML**. PML solo declara qué renderizar. La asignación de audiencia y visibilidad por participante la resuelve el runner del agente vía metadata del turno (envelope), antes de que el PML llegue al renderer.
+
+Esto implica que un mismo bloque PML puede renderizarse simultáneamente como "tarea viva" para un usuario y como "placeholder" o nada para otros participantes, sin que el contenido PML cambie. El renderer lee el envelope del turno para saber qué pintar a quién.
+
+> **Implementación de referencia:** ver `Peppo-runner.md` (sección de routing multiusuario) para el modelo de envelope y la política por tipo de conversación. PML asume que esa capa está resuelta cuando el mensaje llega al renderer.
+
+### 9.2 Aplicación del modelo de zonas y fases a los diagramas
+
+Los diagramas por componente (§9.5–§9.18) usan el modelo canónico definido en §9.1.1:
+
+- **Componentes pasivos** (sin tarea: `text`, `markdown`, `image`, `media`, `facts`, `divider`, `dtable`) se renderizan **directo en `shared_history`**. Un único diagrama; no atraviesan `task_narrative` ni `task_controls`.
+- **Componentes interactivos** (con tarea: `button`, `buttons`, `url`, `input`, `toggle`, `choice`, `confirm`) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. Se diagraman tres bloques, uno por fase, mostrando las tres zonas separadas con líneas horizontales.
+
+**Convención visual de las zonas en los diagramas:**
+
+```
 ┌─────────────────────────┐
-│                         │
-│  [Historial de chat]    │
-│                         │
-│  ┌───────────────────┐  │
-│  │ ✅ Datos enviados │  │ ← Resumen inline
-│  │ Pedro García      │  │    (permanente)
-│  │ Reforma 123       │  │
-│  └───────────────────┘  │
-│                         │
-│  Agente: ¡Gracias Pedro!│
-│                         │
-│ ┌─────────────────────┐ │
-│ │ Escribe un mensaje  │ │ ← Chat input RESTAURADO
-│ └─────────────────────┘ │
+│ shared_history          │ ← compartido, inmutable
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │ ← privado al disparador, narrativa
+│   ...                   │
+├─────────────────────────┤
+│ task_controls           │ ← privado al disparador, control vivo
+│   ...                   │
 └─────────────────────────┘
 ```
 
-### 9.3 Gestos soportados
+La línea horizontal `├──┤` separa las tres zonas. En `final_rendering`, las zonas `task_narrative` y `task_controls` aparecen vacías; el snapshot resuelto vive en `shared_history`.
+
+**Caracterización de `live_capture` por componente:**
+
+La fase `live_capture` se manifiesta visualmente distinto según el componente. Cuando un diagrama quiera enfatizar qué clase de actividad ocurre, puede etiquetarla así:
+
+| Componente             | Manifestación de `live_capture`                                  |
+| ---------------------- | ----------------------------------------------------------------- |
+| `button`, `buttons`    | Tap directo; resolución inmediata, casi sin permanencia en la fase |
+| `url`                  | Tap abre destino externo; la app preserva estado para volver       |
+| `input`                | Teclado/selector/GPS/archivo abierto, captura en curso             |
+| `toggle`               | Fila táctil, cambio de estado binario                              |
+| `choice`               | Selección de una o varias opciones                                 |
+| `confirm`              | Diálogo modal explícito; el chat input queda pausado mientras dura |
+
+**Lo que pierde el chat input durante `live_capture`:**
+
+El chat input persistente (composer global de la ChatApp) sigue activo durante `live_capture` excepto cuando la tarea exige interacción exclusiva: `confirm` modal, `input type="file"` con selector abierto, o un `form` activo. En esos casos, el chat input se restaura tras `final_rendering`.
+
+**Multiusuario:**
+
+Las zonas `task_narrative` y `task_controls` que aparecen en los diagramas son **privadas al disparador**. Los demás participantes ven `shared_history` igual, pero las dos zonas inferiores pueden mostrar un placeholder (_"Pedro está respondiendo…"_) o quedar ocultas, según la política del runner. La asignación de quién es el disparador no se expresa en PML — viene del envelope del turno (ver §9.1.1.6).
+
+### 9.3 Flujo de Form en chat
+
+> **TODO — pendiente de redacción bajo el modelo canónico.**
+>
+> El flujo de Form se documentará más adelante. Decisiones pendientes:
+>
+> - Si Form **expande** `task_controls` a pantalla completa (sheet/modal) manteniendo las tres zonas conceptualmente, o si introduce una **cuarta zona** (`task_canvas` / `task_fullscreen`) que sustituye temporalmente a `task_narrative` + `task_controls`.
+> - Cómo se materializa el snapshot en `shared_history` tras el envío del Form (resumen inline, lista de campos, badge de "enviado").
+> - Cómo se comporta el chat input persistente durante `live_capture` de un Form modal (se oculta, se mantiene como escape, etc.).
+> - Cómo aplica el lifecycle a Forms `mode="stepped"` con múltiples pasos: ¿cada paso es un `live_capture` distinto o todo el Form vive en un único `live_capture` extendido?
+
+### 9.4 Gestos soportados
 
 | Gesto                    | Acción                    |
 | ------------------------ | ------------------------- |
@@ -1615,6 +1735,584 @@ ESTADO 3 — POST-ENVÍO
 | Swipe down en form modal | Cerrar (con confirmación) |
 | Tap en ✕                 | Cerrar / cancelar         |
 | Mantener presionado      | Mostrar tooltip           |
+
+### 9.5 Text
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`.
+
+- Usar `type="header"` o `type="title"` solo para iniciar bloques importantes; evitar varios títulos grandes consecutivos.
+- Mantener párrafos cortos en móvil: idealmente 1-3 líneas visibles.
+- Usar `muted` para contexto secundario, no para información crítica.
+- Evitar centrar texto largo; `align="center"` funciona mejor en mensajes breves o estados vacíos.
+
+```
+render directo a shared_history
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   ┌───────────────────┐ │
+│   │ Pedido en camino  │ │ ← header/title
+│   │ Entrega estimada  │ │
+│   │ 3-5 días hábiles  │ │ ← paragraph
+│   │ Última act.       │ │ ← muted
+│   └───────────────────┘ │
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.6 Markdown
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`.
+
+- Usar Markdown cuando el contenido necesite estructura real: pasos, listas, citas, enlaces o énfasis.
+- Evitar tablas Markdown anchas en móvil; preferir `facts` o `dtable` según el caso.
+- Los encabezados dentro de Markdown no deben competir visualmente con el mensaje principal del agente.
+- Mantener bloques de código y citas suficientemente cortos para no forzar scroll horizontal.
+
+```
+render directo a shared_history
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   ┌───────────────────┐ │
+│   │ Instrucciones     │ │ ← encabezado
+│   │ 1. Empaca         │ │
+│   │ 2. Pega etiqueta  │ │ ← lista
+│   │ > Reembolso...    │ │ ← cita breve
+│   │ Ver guía          │ │ ← enlace
+│   └───────────────────┘ │
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.7 URL
+
+Componente **interactivo** (tarea). Lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. `live_capture` se manifiesta como tap que abre destino externo (navegador, descarga, copia).
+
+- El `label` debe describir la acción o destino, no mostrar la URL completa.
+- Usar `icon="external"` para abrir fuera del chat, `download` para archivos y `copy` para copiar contenido.
+- Renderizar con área táctil mínima de 44px de alto.
+- Si el enlace abre contenido externo, el renderer debe preservar el estado del chat al volver.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Tu factura está lista.│
+├─────────────────────────┤
+│ task_controls           │
+│  ┌───────────────────┐  │
+│  │ Descargar factura │  │ ← URL viva
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+live_capture (tap abre destino externo)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Tu factura está lista.│
+├─────────────────────────┤
+│ task_controls           │
+│  ┌───────────────────┐  │
+│  │ Descargar... ⏳   │  │ ← abriendo
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+final_rendering (snapshot compartido)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   Tu factura está lista.│
+│   Usuario abrió factura │ ← snapshot
+│   Agente: La mantengo   │
+│   disponible aquí.      │
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
+
+### 9.8 Button
+
+Componente **interactivo** (tarea). Lifecycle completo. `live_capture` es prácticamente instantáneo: un tap resuelve la tarea.
+
+- El texto del botón debe ser una acción clara: "Confirmar pago", "Ver factura", "Cancelar".
+- Usar `style="primary"` solo para la acción principal del bloque.
+- Usar `style="danger"` únicamente para acciones destructivas o irreversibles.
+- Si `loading="true"`, bloquear taps repetidos y mantener visible el estado de progreso.
+- Si `confirmText` está presente, mostrar confirmación antes de emitir `[[INTERACTION]]`.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Revisa el total antes │
+│   de pagar.             │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌───────────────────┐  │
+│  │ Confirmar pago    │  │ ← primary
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+live_capture (tap; instantáneo)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Revisa el total antes │
+│   de pagar.             │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌───────────────────┐  │
+│  │ ⏳ Procesando...  │  │ ← loading
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+final_rendering (snapshot compartido)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   Revisa el total antes │
+│   de pagar.             │
+│   Usuario: pago         │ ← snapshot
+│   Agente: Pago recibido.│
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
+
+### 9.9 Buttons
+
+Componente **interactivo** (tarea). Lifecycle completo. Un único tap entre las opciones cierra la tarea.
+
+- Mostrar máximo 5 opciones, como define la especificación; para más opciones usar `choice`.
+- Ordenar de izquierda a derecha o de arriba abajo por prioridad de uso.
+- En pantallas pequeñas, permitir wrap o apilar botones para evitar texto truncado.
+- No mezclar varias acciones primarias dentro del mismo grupo.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   ¿Qué deseas hacer?    │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌─────────┐ ┌───────┐  │
+│  │Rastrear │ │Comprar│  │
+│  └─────────┘ └───────┘  │
+│  ┌───────────────────┐  │
+│  │ Hablar con soporte│  │
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+live_capture (tap en una opción)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   ¿Qué deseas hacer?    │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌─────────┐ ┌───────┐  │
+│  │Rastrear●│ │Comprar│  │ ← seleccionado
+│  └─────────┘ └───────┘  │
+│  ┌───────────────────┐  │
+│  │ Hablar con soporte│  │
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+final_rendering (snapshot compartido)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   ¿Qué deseas hacer?    │
+│   Usuario: rastrear     │ ← snapshot
+│   Agente: Busco el      │
+│   estado del pedido.    │
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
+
+### 9.10 Image
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`.
+
+- Siempre respetar `alt` cuando exista; si falta, el renderer debe tratar la imagen como decorativa o inferir un texto mínimo seguro.
+- Usar `size="full"` solo cuando la imagen sea el contenido principal del mensaje.
+- Mantener proporción de aspecto y evitar recortes que oculten información relevante.
+- Mostrar `caption` debajo de la imagen con estilo secundario.
+- Mientras carga, reservar espacio para evitar saltos en el historial.
+
+```
+render directo a shared_history
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   ┌───────────────────┐ │
+│   │                   │ │
+│   │      IMAGEN       │ │ ← proporción estable
+│   │                   │ │
+│   └───────────────────┘ │
+│   Nuevo modelo 2026     │ ← caption
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.11 Media
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`. La reproducción es interacción interna del componente (no emite `[[INTERACTION]]` al agente), por lo que no atraviesa el lifecycle de tarea.
+
+- No reproducir audio o video automáticamente.
+- Mostrar controles nativos o equivalentes accesibles para reproducir, pausar y controlar volumen.
+- En video, usar `poster` cuando esté disponible para evitar un bloque vacío.
+- Mantener el reproductor dentro del ancho del chat y con proporción estable.
+- Si falla la carga, mostrar una acción alternativa para abrir o descargar el recurso.
+
+```
+render directo a shared_history
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   ┌───────────────────┐ │
+│   │    POSTER VIDEO   │ │
+│   │        ▶          │ │ ← play explícito
+│   └───────────────────┘ │
+│   0:00 ━━━━━━━ 2:30     │ ← controles media
+│   (visible para todos;  │
+│    reproducción local)  │
+└─────────────────────────┘
+```
+
+### 9.12 Input
+
+Componente **interactivo** (tarea). Lifecycle completo. `live_capture` abre teclado, selector, GPS o picker de archivo según `type`.
+
+- En móvil, enfocar un campo solo cuando el usuario lo activa explícitamente.
+- Usar teclado adecuado según `type`: email, tel, number, date, time, etc.
+- Mostrar `label` persistente cuando el valor pueda quedar ambiguo; no depender solo de `placeholder`.
+- Validar lo antes posible sin interrumpir la escritura; mostrar `errorMessage` cerca del campo.
+- Para `location`, pedir permiso con contexto claro antes de invocar GPS.
+- Para `file`, mostrar restricciones de tipo y tamaño antes de abrir el selector.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Necesito tu correo    │
+│   para continuar.       │
+├─────────────────────────┤
+│ task_controls           │
+│   Email                 │ ← label
+│  ┌───────────────────┐  │
+│  │                   │  │ ← campo vacío
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+live_capture (teclado activo)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Necesito tu correo    │
+│   para continuar.       │
+├─────────────────────────┤
+│ task_controls           │
+│   Email                 │
+│  ┌───────────────────┐  │
+│  │ pedro@email.com▏ │  │ ← cursor + teclado
+│  └───────────────────┘  │
+│   Usa un correo válido  │ ← help inline
+└─────────────────────────┘
+
+final_rendering (snapshot compartido)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   Necesito tu correo    │
+│   para continuar.       │
+│   Usuario:              │ ← snapshot
+│   pedro@email.com       │
+│   Agente: Correo        │
+│   recibido.             │
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
+
+### 9.13 Toggle
+
+Componente **interactivo** (tarea). Lifecycle completo. `live_capture` es un tap binario que cambia el estado.
+
+- Usar toggle para estados binarios claros, no para elegir entre varias opciones.
+- El `label` debe describir el estado activado de forma inequívoca.
+- Mantener toda la fila como área táctil, no solo el switch visual.
+- Si `required="true"`, explicar con `error` o texto cercano qué condición debe cumplirse.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Confirma si aceptas   │
+│   los términos.         │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌───────────────────┐  │
+│  │ Acepto términos ○ │  │ ← off
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+live_capture (tap en la fila)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Confirma si aceptas   │
+│   los términos.         │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌───────────────────┐  │
+│  │ Acepto términos ● │  │ ← on
+│  └───────────────────┘  │
+└─────────────────────────┘
+
+final_rendering (snapshot compartido)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   Confirma si aceptas   │
+│   los términos.         │
+│   Usuario: true         │ ← snapshot
+│   Agente: Gracias,      │
+│   continuamos.          │
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
+
+### 9.14 Choice
+
+Componente **interactivo** (tarea). Lifecycle completo. En `multi="true"`, `live_capture` puede extenderse mientras el usuario marca/desmarca opciones; cierra en submit explícito.
+
+- Usar `style="buttons"` para 2-5 opciones cortas.
+- Usar `style="radio"` cuando convenga ver todas las opciones con más texto.
+- Usar `style="dropdown"` cuando haya muchas opciones o el espacio sea limitado.
+- Para `multi="true"`, mostrar claramente las opciones seleccionadas y permitir deseleccionar.
+- Evitar opciones con textos demasiado parecidos; el usuario debe poder decidir rápido.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Elige una talla       │
+│   disponible.           │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌────┐ ┌────┐ ┌────┐   │
+│  │ 40 │ │ 41 │ │ 42 │   │
+│  └────┘ └────┘ └────┘   │
+└─────────────────────────┘
+
+live_capture (selección)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Elige una talla       │
+│   disponible.           │
+├─────────────────────────┤
+│ task_controls           │
+│  ┌────┐ ┌────┐ ┌────┐   │
+│  │ 40 │ │ 41 │ │ 42●│   │ ← seleccionada
+│  └────┘ └────┘ └────┘   │
+│   Seleccionada: 42      │
+└─────────────────────────┘
+
+final_rendering (snapshot compartido)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   Elige una talla       │
+│   disponible.           │
+│   Usuario: talla 42     │ ← snapshot
+│   Agente: Perfecto,     │
+│   aparto talla 42.      │
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
+
+### 9.15 Facts
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`.
+
+- Usar `facts` para resúmenes, confirmaciones y datos de solo lectura.
+- En móvil, preferir `columns="1"` salvo que las claves y valores sean muy cortos.
+- Mantener claves consistentes y breves.
+- No usar `facts` para datos editables; usar `input`, `choice` o `form`.
+
+```
+render directo a shared_history
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   Resumen               │
+│   ┌───────────────────┐ │
+│   │ Producto  Nike    │ │
+│   │ Talla     42      │ │ ← clave-valor
+│   │ Precio    $2,499  │ │
+│   └───────────────────┘ │
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.16 Divider
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`. Suele aparecer dentro de un mensaje que también contiene una tarea (`buttons`, etc.), en cuyo caso el divider acompaña a la narrativa en el snapshot final.
+
+- Usar `divider` para separar grupos de contenido, no después de cada elemento.
+- Si tiene `label`, el texto debe ser corto y secundario.
+- Mantener contraste bajo para que no compita con acciones o información principal.
+- Evitar varios divisores consecutivos dentro del mismo mensaje.
+
+```
+render directo a shared_history (ejemplo con narrativa adyacente)
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   Hay una opción        │
+│   principal y otras     │
+│   alternativas.         │
+│   ─── O continúa con ───│ ← divider
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.17 DTable
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`. El scroll horizontal es interacción interna del componente; no produce `[[INTERACTION]]` ni cambia el estado de la tarea.
+
+- Usar `dtable` solo cuando la comparación por filas y columnas sea esencial.
+- En móvil, permitir scroll horizontal o transformar a filas tipo lista si la tabla es ancha.
+- Mantener encabezados cortos y valores escaneables.
+- Evitar celdas con párrafos largos; si el contenido crece, preferir `facts` o Markdown estructurado.
+
+```
+render directo a shared_history
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   Comparativa       →   │ ← scroll horizontal
+│   ┌───────────────────┐ │
+│   │ Plan │ Precio │... │
+│   │ Basic│ $9     │... │
+│   │ Pro  │ $29    │... │
+│   └───────────────────┘ │
+│   Desliza para ver más  │
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.18 Confirm
+
+Componente **interactivo** (tarea). Lifecycle completo. `live_capture` se materializa como un diálogo modal explícito; el chat input persistente queda pausado mientras dura.
+
+- Usar `confirm` para decisiones explícitas que puedan tener consecuencia clara.
+- El `title` debe nombrar la decisión, no solo decir "Confirmar".
+- El `message` debe explicar la consecuencia en una frase breve.
+- Usar `style="danger"` solo para acciones destructivas.
+- La acción de cancelar debe estar siempre visible y emitir `[[INTERACTION]]` igual que la confirmación.
+
+```
+first_rendering (privado al disparador)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Esta acción requiere  │
+│   confirmación.         │
+├─────────────────────────┤
+│ task_controls           │
+│  ╔═══════════════════╗  │
+│  ║ ¿Eliminar cuenta? ║  │
+│  ║ Se borrarán tus   ║  │
+│  ║ datos.            ║  │
+│  ║ Sí, eliminar      ║  │ ← confirmed
+│  ║ Cancelar          ║  │ ← cancelled
+│  ╚═══════════════════╝  │
+└─────────────────────────┘
+
+live_capture (modal activo, chat input pausado)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+├─────────────────────────┤
+│ task_narrative          │
+│   Esta acción requiere  │
+│   confirmación.         │
+├─────────────────────────┤
+│ task_controls           │
+│  ╔═══════════════════╗  │
+│  ║ ¿Eliminar cuenta? ║  │
+│  ║ ...               ║  │
+│  ║ Sí, eliminar      ║  │
+│  ║ Cancelar      [●] ║  │ ← foco/tap
+│  ╚═══════════════════╝  │
+└─────────────────────────┘
+
+final_rendering (snapshot compartido, chat input restaurado)
+┌─────────────────────────┐
+│ shared_history          │
+│   ...                   │
+│   Esta acción requiere  │
+│   confirmación.         │
+│   Usuario: cancelled    │ ← snapshot
+│   Agente: No eliminé la │
+│   cuenta.               │
+├─────────────────────────┤
+│ task_narrative   (vacío)│
+├─────────────────────────┤
+│ task_controls    (vacío)│
+└─────────────────────────┘
+```
 
 ---
 
