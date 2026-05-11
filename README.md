@@ -26,8 +26,6 @@ Mayo 2026
     4.9  Toggle
     4.10 Choice
     4.11 Confirm
-
-
  5. Modelo de interacción
  6. Reglas de composición
  7. Guías para LLMs / Agentes
