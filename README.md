@@ -1,10 +1,10 @@
 # PML — PEPPO Markup Language
 
-## Especificación completa v1.1
+## Especificación completa v1.2
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
-Abril 2026
+Mayo 2026
 
 ---
 
@@ -103,17 +103,18 @@ Extensible         →  Nuevos componentes sin romper compatibilidad
 
 ### 2.4 Reglas estrictas
 
-| Regla           | Detalle                                                                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Comillas        | Los valores de atributos se delimitan con `" "` (preferido) o `' '` (cuando el valor contiene comillas dobles). Nunca mezclar en el mismo atributo. |
-| Prohibido       | Nunca usar JSON, `< >`, ni caracteres especiales fuera de los atributos                                                                             |
-| IDs             | Todo componente interactivo **debe** tener `id="identificador-unico"`                                                                               |
-| Unicidad        | Los `id` deben ser únicos dentro de un mensaje                                                                                                      |
-| Escapado        | No existen secuencias de escape. El LLM elige la comilla que no conflicte con el contenido.                                                         |
-| Autofinalizados | **Siempre** terminan con ` /]` — el espacio antes de `/]` es obligatorio                                                                            |
-| Cierre          | Los contenedores **siempre** se cierran con `[/PML:tipo]`                                                                                           |
-| Case-sensitive  | Los nombres de componentes y atributos son en minúsculas                                                                                            |
-| Encoding        | Todo el contenido es UTF-8                                                                                                                          |
+| Regla             | Detalle                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Comillas          | Los valores de atributos se delimitan con `" "` (preferido) o `' '`. Nunca mezclar en el mismo atributo.                       |
+| Comillas Anidadas | Si un valor requiere ambas comillas, usar entidades HTML (`&quot;`, `&#39;`) **exclusivamente** dentro del valor del atributo. |
+| Prohibido         | Nunca usar JSON, `< >`, ni caracteres especiales fuera de los atributos.                                                       |
+| IDs               | Todo componente interactivo **debe** tener `id="identificador-unico"`.                                                         |
+| Unicidad          | Los `id` deben ser únicos dentro de un mensaje.                                                                                |
+| Escapado          | No existen secuencias de escape con `\`.                                                                                       |
+| Autofinalizados   | **Siempre** terminan con ` /]` — el espacio antes de `/]` es obligatorio.                                                      |
+| Cierre            | Los contenedores **siempre** se cierran con `[/PML:tipo]`.                                                                     |
+| Case-sensitive    | Los nombres de componentes y atributos son en minúsculas.                                                                      |
+| Encoding          | Todo el contenido es UTF-8.                                                                                                    |
 
 ### 2.5 Encoding de interacciones
 
@@ -133,6 +134,8 @@ Cuando la Chat App envía un mensaje de interacción al agente, **siempre** apli
 **Se codifica:** texto libre del usuario (input, textarea, etc.)
 
 **No se codifica:** `id`, `value` de botones/choice/toggle, referencias de file, coordenadas de location — todos definidos por el agente o por la Chat App, sin caracteres especiales.
+
+**Nota para el Agente (LLM):** El prompt del sistema del agente debe instruirlo explícitamente para que procese (decodifique) estos valores URL-encoded generados por el usuario.
 
 **Ejemplo:**
 
@@ -238,6 +241,8 @@ Para más info visita nuestra [guía de envíos](https://peppo.com/envios).
 
 **Soporta:** Negritas, cursivas, listas, enlaces, código inline, blockquotes, encabezados.
 
+**Nota de parsing:** El uso normal de corchetes en Markdown (ej. enlaces `[texto](url)`) es completamente seguro. El parser del renderer solo procesa aquellos corchetes que inician estrictamente con `[PML:`.
+
 ---
 
 ### 4.3 Facts
@@ -274,6 +279,7 @@ Tabla de datos
 | `columns` | Sí        | string | Nombres de columnas separados por "\|" |
 
 **Formato del contenido:** Cada fila va envuelta en `[PML:dtrow]cel1|cel2|cel3[/PML:dtrow]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
+**Importante:** El carácter `|` (pipe) está estrictamente prohibido dentro del texto de las celdas y nombres de columnas, ya que actúa como delimitador exclusivo.
 
 **Ejemplo:**
 
@@ -641,8 +647,10 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 ┌──────────────────┬─────────────────────────────────────────────────┐
 │ Contenedor        │ Puede contener                                   │
 ├──────────────────┼─────────────────────────────────────────────────┤
-│ (raíz del mensaje)│ Todos los componentes standalone          │
+│ (raíz del mensaje)│ Todos los componentes standalone                 │
 │ choice            │ opt (uno o más)                                  │
+│ facts             │ fact (uno o más)                                 │
+│ dtable            │ dtrow (uno o más)                                │
 └──────────────────┴─────────────────────────────────────────────────┘
 ```
 
@@ -1333,7 +1341,13 @@ final_rendering (snapshot compartido, chat input restaurado)
 ### 11.1 Versionado
 
 ```
-PML v1.1 — Mayo 2026
+PML v1.2 — Mayo 2026
+  - 14 componentes standalone
+  - Reglas estrictas de parseo léxico (EBNF refinado)
+```
+
+```
+PML v1.1 — Abril 2026
   - 14 componentes standalone
   - Layout responsivo
 ```
@@ -1344,7 +1358,7 @@ PML v1.1 — Mayo 2026
 2. Cambios de sintaxis solo en major (v2.0)
 3. Renderers deben ignorar componentes desconocidos y renderizar como texto
 
-### 11.3 Candidatos para v1.2
+### 11.3 Candidatos para v1.3
 
 | Componente | Descripción | Prioridad |
 | ---------- | ----------- | --------- |
@@ -1368,7 +1382,7 @@ PML v1.1 — Mayo 2026
 │ opt             │ Choice only│ Opción individual de un choice        │
 │ facts           │ Ambos     │ Tabla clave-valor                      │
 │ divider         │ Ambos     │ Separador horizontal                   │
-│ dtabl           │ Standalone│ Tabla de datos                         │
+│ dtable          │ Standalone│ Tabla de datos                         │
 │ confirm         │ Standalone│ Diálogo de confirmación                │
 └────────────────┴───────────┴────────────────────────────────────────┘
 ```
@@ -1383,31 +1397,28 @@ message         = { text | markdown | component } ;
 component       = self_closing | container ;
 
 self_closing    = "[PML:" TYPE attr_list " /]" ;
-container       = "[PML:" TYPE attr_list "]"
-                  { child } "[/PML:" TYPE "]" ;
 
-field           = "[PML:input" attr_list " /]"
-                | "[PML:toggle" attr_list " /]"
-                | choice ;
+container       = choice_cnt | facts_cnt | dtable_cnt ;
 
-choice          = "[PML:choice" attr_list "]" { opt } "[/PML:choice]" ;
+(* Contenedores específicos para forzar regla de anidación máxima nivel 2 *)
+choice_cnt      = "[PML:choice" attr_list "]" { opt } "[/PML:choice]" ;
+facts_cnt       = "[PML:facts" attr_list "]" { fact } "[/PML:facts]" ;
+dtable_cnt      = "[PML:dtable" attr_list "]" { dtrow } "[/PML:dtable]" ;
+
 opt             = "[PML:opt" attr_list " /]" ;
+fact            = "[PML:fact]" { text } "[/PML:fact]" ;
+dtrow           = "[PML:dtrow]" { text } "[/PML:dtrow]" ;
 
-row             = "[PML:row]" { col } "[/PML:row]" ;
-col             = "[PML:col" attr_list "]" field "[/PML:col]" ;
+attr_list       = { ATTR_NAME "=" ( "\"" ATTR_VAL_DQ "\"" | "'" ATTR_VAL_SQ "'" ) } ;
 
+TYPE            = "text" | "markdown" | "image" | "media" | "input" | "toggle"
+                | "divider" | "confirm" ;
 
-focus           = "[PML:focus" attr_list " /]" ;
-snapshot        = "[PML:snapshot" attr_list " /]" ;
-
-child           = text | markdown | self_closing | container ;
-
-attr_list       = { ATTR_NAME "=" "\"" ATTR_VALUE "\"" } ;
-
-TYPE            = "text" | "markdown" | "image" | "media" | "input" | "toggle" | "choice" | "opt"
-                | "facts" | "divider" | "dtable" | "confirm" ;
+ATTR_NAME       = /[a-z]+/ ;
+ATTR_VAL_DQ     = /[^"]/ ; (* Cualquier caracter excepto comilla doble *)
+ATTR_VAL_SQ     = /[^']/ ; (* Cualquier caracter excepto comilla simple *)
 ```
 
 ---
 
-_PML v1.1 — PEPPO Platform — Mayo 2026_
+_PML v1.2 — PEPPO Platform — Mayo 2026_
