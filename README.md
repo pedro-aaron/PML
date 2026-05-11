@@ -17,24 +17,35 @@ Abril 2026
  4. Componentes standalone (en chat)
     4.1  Text
     4.2  Markdown
-    4.3  URL
-    4.4  Button
-    4.5  Buttons
-    4.6  Image
-    4.7  Media
+    4.3  Facts
+    4.4  DTable
+    4.5  Image
+    4.6  Media
+    4.7  Divider
     4.8  Input
     4.9  Toggle
     4.10 Choice
-    4.11 Facts
-    4.12 Divider
-    4.13 DTable
-    4.14 Confirm
- 6. Modelo de interacción
- 7. Reglas de composición
- 8. Guías para LLMs / Agentes
- 9. Guías de UX para móviles
-10. Manejo de errores
-11. Versionado y extensibilidad
+    4.11 Confirm
+
+
+ 5. Modelo de interacción
+ 6. Reglas de composición
+ 7. Guías para LLMs / Agentes
+ 8. Guías de UX para móviles
+ 9. UX de componentes standalone (en chat)
+   9.1 Text
+   9.2 Markdown
+   9.3 Facts
+   9.4 DTable
+   9.5 Image
+   9.6 Media
+   9.7 Divider
+   9.8 Input
+   9.9 Toggle
+   9.10 Choice
+   9.11 Confirm
+ 10. Manejo de errores
+ 11. Versionado y extensibilidad
 ```
 
 ---
@@ -135,23 +146,22 @@ Chat App envía:      [[INTERACTION]] id=nombre value=Pedro+%26+María
 ```
 Hola Pedro, ¿qué deseas hacer hoy?
 
-[PML:buttons id="acciones"]
-  [PML:button id="b1" label="Reservar cita" value="book" style="primary" /]
-  [PML:button id="b2" label="Ver precios" value="prices" /]
-[/PML:buttons]
+[PML:choice id="acciones"]
+  [PML:opt value="book" label="Reservar cita" /]
+  [PML:opt value="prices" label="Ver precios" /]
+[/PML:choice]
 ```
 
 **Ejemplo con comillas simples (valor contiene comillas dobles):**
 
 ```
-[PML:button id="c" label='Dijo: "hola"' value="confirm" style="primary" /]
+[[INTERACTION id=book value="book"]]
 ```
 
 ### 2.7 Tipos de componentes PML
 
 ```
-tipo            = "text" | "markdown" | "url" | "button" | "buttons"
-                | "image" | "media" | "input" | "toggle" | "choice" | "opt"
+tipo            = "text" | "markdown" | "image" | "media" | "input" | "toggle" | "choice" | "opt"
                 | "facts" | "divider" | "dtable" | "confirm" ;
 ```
 
@@ -230,82 +240,54 @@ Para más info visita nuestra [guía de envíos](https://peppo.com/envios).
 
 ---
 
-### 4.3 URL
+### 4.3 Facts
 
-Enlace clickeable.
+Tabla de pares clave-valor.
 
-| Atributo | Requerido | Tipo                               | Descripción                                         |
-| -------- | --------- | ---------------------------------- | --------------------------------------------------- |
-| `id`     | No        | string                             | Identificador                                       |
-| `href`   | Sí        | url                                | Destino del enlace                                  |
-| `label`  | Sí        | string                             | Texto visible                                       |
-| `style`  | No        | `primary` / `secondary` / `subtle` | Estilo visual. Default: `secondary`.                |
-| `icon`   | No        | string                             | Icono predefinido (`external`, `download`, `copy`). |
+| Atributo  | Requerido | Tipo      | Descripción                       |
+| --------- | --------- | --------- | --------------------------------- |
+| `id`      | No        | string    | Identificador                     |
+| `columns` | No        | `1` / `2` | Columnas de layout. Default: `1`. |
 
-**Ejemplo:**
-
-```
-[PML:url id="ver-factura" href="https://cdn.peppo.com/factura-001.pdf"
-  label="Descargar factura" style="primary" icon="download" /]
-```
-
-**Interacción generada:**
-
-```
-[[INTERACTION]] id=ver-factura value=https://cdn.peppo.com/factura-001.pdf
-```
-
----
-
-### 4.4 Button
-
-Botón individual.
-
-| Atributo      | Requerido | Tipo                                          | Descripción                                |
-| ------------- | --------- | --------------------------------------------- | ------------------------------------------ |
-| `id`          | Sí        | string                                        | Identificador único                        |
-| `label`       | Sí        | string                                        | Texto visible                              |
-| `value`       | Sí        | string                                        | Valor enviado al agente                    |
-| `style`       | No        | `primary` / `secondary` / `danger` / `subtle` | Estilo. Default: `secondary`.              |
-| `iconUrl`     | No        | url                                           | Icono antes del label                      |
-| `loading`     | No        | `true` / `false`                              | Spinner + deshabilitado. Default: `false`. |
-| `confirmText` | No        | string                                        | Diálogo de confirmación antes de enviar    |
+**Formato del contenido:** Cada entrada va envuelta en `[PML:fact]Clave: valor[/PML:fact]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
 
 **Ejemplo:**
 
 ```
-[PML:button id="confirmar" label="Sí, confirmar pago" value="confirmed" style="primary" /]
-```
-
-**Interacción generada:**
-
-```
-[[INTERACTION]] id=confirmar value=confirmed
+[PML:facts columns="2"]
+[PML:fact]Producto: Nike Air Max 90[/PML:fact]
+[PML:fact]Talla: 42[/PML:fact]
+[PML:fact]Precio: $2,499 MXN[/PML:fact]
+[PML:fact]Envío: Gratis[/PML:fact]
+[/PML:facts]
 ```
 
 ---
 
-### 4.5 Buttons
+### 4.4 DTable
 
-Fila de botones. Máximo **5**.
+Tabla de datos
 
-| Atributo | Requerido | Tipo                        | Descripción                  |
-| -------- | --------- | --------------------------- | ---------------------------- |
-| `id`     | Sí        | string                      | Identificador del grupo      |
-| `align`  | No        | `left` / `center` / `right` | Alineación. Default: `left`. |
+| Atributo  | Requerido | Tipo   | Descripción                            |
+| --------- | --------- | ------ | -------------------------------------- |
+| `id`      | Sí        | string | Identificador único                    |
+| `columns` | Sí        | string | Nombres de columnas separados por "\|" |
+
+**Formato del contenido:** Cada fila va envuelta en `[PML:dtrow]cel1|cel2|cel3[/PML:dtrow]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
 
 **Ejemplo:**
 
 ```
-[PML:buttons id="post-compra"]
-  [PML:button id="track" label="Rastrear pedido" value="track" style="primary" /]
-  [PML:button id="continue" label="Seguir comprando" value="continue" /]
-[/PML:buttons]
+[PML:dtable id="comparativa" columns="Plan|Precio|Agentes|Mensajes"]
+[PML:dtrow]Básico|$9/mes|1|100/día[/PML:dtrow]
+[PML:dtrow]Pro|$29/mes|10|Ilimitado[/PML:dtrow]
+[PML:dtrow]Enterprise|Custom|Ilimitado|Ilimitado[/PML:dtrow]
+[/PML:dtable]
 ```
 
 ---
 
-### 4.6 Image
+### 4.5 Image
 
 Imagen estática.
 
@@ -325,7 +307,7 @@ Imagen estática.
 
 ---
 
-### 4.7 Media
+### 4.6 Media
 
 Reproductor de video o audio.
 
@@ -345,13 +327,29 @@ Reproductor de video o audio.
 
 ---
 
+### 4.7 Divider
+
+Línea separadora.
+
+```
+[PML:divider /]
+```
+
+Con texto:
+
+```
+[PML:divider label="O continúa con" /]
+```
+
+---
+
 ### 4.8 Input
 
 Campo de entrada de datos.
 
 **Tipos disponibles:**
 
-`text` / `number` / `email` / `tel` / `url` / `password` / `date` / `time` / `location` / `file`
+`text` / `number` / `email` / `tel` / `password` / `date` / `time` / `location` / `file`
 
 | Atributo       | Requerido | Tipo             | Descripción                     |
 | -------------- | --------- | ---------------- | ------------------------------- |
@@ -501,69 +499,6 @@ Las opciones tienen el formato **[PML:opt value="valor" /]** y son hijos directo
 
 ---
 
-### 4.11 Facts
-
-Tabla de pares clave-valor.
-
-| Atributo  | Requerido | Tipo      | Descripción                       |
-| --------- | --------- | --------- | --------------------------------- |
-| `id`      | No        | string    | Identificador                     |
-| `columns` | No        | `1` / `2` | Columnas de layout. Default: `1`. |
-
-**Formato del contenido:** Cada entrada va envuelta en `[PML:fact]Clave: valor[/PML:fact]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
-
-**Ejemplo:**
-
-```
-[PML:facts columns="2"]
-[PML:fact]Producto: Nike Air Max 90[/PML:fact]
-[PML:fact]Talla: 42[/PML:fact]
-[PML:fact]Precio: $2,499 MXN[/PML:fact]
-[PML:fact]Envío: Gratis[/PML:fact]
-[/PML:facts]
-```
-
----
-
-### 4.12 Divider
-
-Línea separadora.
-
-```
-[PML:divider /]
-```
-
-Con texto:
-
-```
-[PML:divider label="O continúa con" /]
-```
-
----
-
-### 4.13 DTable
-
-Tabla de datos
-
-| Atributo  | Requerido | Tipo   | Descripción                            |
-| --------- | --------- | ------ | -------------------------------------- |
-| `id`      | Sí        | string | Identificador único                    |
-| `columns` | Sí        | string | Nombres de columnas separados por "\|" |
-
-**Formato del contenido:** Cada fila va envuelta en `[PML:dtrow]cel1|cel2|cel3[/PML:dtrow]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
-
-**Ejemplo:**
-
-```
-[PML:dtable id="comparativa" columns="Plan|Precio|Agentes|Mensajes"]
-[PML:dtrow]Básico|$9/mes|1|100/día[/PML:dtrow]
-[PML:dtrow]Pro|$29/mes|10|Ilimitado[/PML:dtrow]
-[PML:dtrow]Enterprise|Custom|Ilimitado|Ilimitado[/PML:dtrow]
-[/PML:dtable]
-```
-
----
-
 ### 4.14 Confirm
 
 Diálogo de confirmación.
@@ -601,15 +536,15 @@ Si el usuario cancela:
 
 ---
 
-## 6. Modelo de interacción
+## 5. Modelo de interacción
 
-### 6.1 Formatos de interacción
+### 5.1 Formatos de interacción
 
-| Formato                        | Cuándo se usa                                          |
-| ------------------------------ | ------------------------------------------------------ |
-| `[[INTERACTION]] id=X value=Y` | Botón, choice, toggle, confirmación, URL, tab, section |
+| Formato                        | Cuándo se usa                                  |
+| ------------------------------ | ---------------------------------------------- |
+| `[[INTERACTION]] id=X value=Y` | bo, choice, toggle, confirmación, tab, section |
 
-### 6.2 Flujo completo
+### 5.2 Flujo completo
 
 ```
 ┌──────────┐        PML         ┌──────────┐
@@ -630,7 +565,7 @@ Si el usuario cancela:
 8. Repetir
 ```
 
-### 6.3 Ejemplo de conversación completa
+### 5.3 Ejemplo de conversación completa
 
 ```
 USUARIO: Quiero comprar unos zapatos
@@ -642,10 +577,10 @@ AGENTE: ¡Perfecto! Tenemos varios modelos disponibles.
 
         ¿Cuál te interesa?
 
-        [PML:buttons id="catalogo"]
-          [PML:button id="nike" label="Nike Air Max — $2,499" value="nike" style="primary" /]
-          [PML:button id="adidas" label="Adidas Ultraboost — $3,199" value="adidas" /]
-        [/PML:buttons]
+        [PML:choice id="catalogo"]
+          [PML:opt value="nike" label="Nike Air Max — $2,499" /]
+          [PML:opt value="adidas" label="Adidas Ultraboost — $3,199" /]
+        [/PML:choice]
 
 --- El usuario toca "Nike Air Max" ---
 
@@ -669,8 +604,9 @@ USUARIO: [[INTERACTION]] id=talla value=42
 AGENTE: Nike Air Max, talla 42. Para completar tu compra
         necesito tus datos de envío. Toca el botón cuando estés listo.
 
-        [PML:button id="start-checkout" label="Completar datos"
-          value="start" style="primary" /]
+        [PML:choice id="start-checkout"]
+          [PML:opt value="start" label="Completar datos" /]
+        [/PML:choice]
 
 --- El usuario toca el botón ---
 
@@ -689,33 +625,32 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
           Entrega estimada: 3-5 días hábiles
         [/PML:facts]
 
-        [PML:buttons id="post-compra"]
-          [PML:button id="track" label="Rastrear pedido" value="track" style="primary" /]
-          [PML:button id="continue" label="Seguir comprando" value="continue" /]
-        [/PML:buttons]
+        [PML:choice id="post-compra"]
+          [PML:opt value="track" label="Rastrear pedido" /]
+          [PML:opt value="continue" label="Seguir comprando" /]
+        [/PML:choice]
 ```
 
 ---
 
-## 7. Reglas de composición
+## 6. Reglas de composición
 
-### 7.1 Tabla de nesting permitido
+### 6.1 Tabla de nesting permitido
 
 ```
 ┌──────────────────┬─────────────────────────────────────────────────┐
 │ Contenedor        │ Puede contener                                   │
 ├──────────────────┼─────────────────────────────────────────────────┤
 │ (raíz del mensaje)│ Todos los componentes standalone          │
-│ buttons           │ button (máx 5)                                   │
 │ choice            │ opt (uno o más)                                  │
 └──────────────────┴─────────────────────────────────────────────────┘
 ```
 
-### 7.2 Reglas de anidación
+### 6.2 Reglas de anidación
 
-1. **Profundidad máxima** 2 niveles (buttons > button)
+1. **Profundidad máxima** 2 niveles (choice > opt)
 
-### 7.3 Reglas de IDs
+### 6.3 Reglas de IDs
 
 - Únicos dentro de un mensaje
 - Formato: `kebab-case`
@@ -724,16 +659,16 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 
 ---
 
-## 8. Guías para LLMs / Agentes
+## 7. Guías para LLMs / Agentes
 
-### 8.1 Reglas obligatorias
+### 7.1 Reglas obligatorias
 
 1. **Siempre** incluir `id` en todo componente interactivo
 2. **Nunca** usar JSON, `< >` ni HTML para componentes
 3. Máximo **5 botones** por `[PML:buttons]`
 4. Usar `style="primary"` solo para la acción principal
 
-### 8.4 Generación tolerante a errores
+### 7.2 Generación tolerante a errores
 
 | Error del agente             | Comportamiento del renderer         |
 | ---------------------------- | ----------------------------------- |
@@ -747,9 +682,9 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 
 ---
 
-## 9. Guías de UX para móviles
+## 8. Guías de UX para móviles
 
-### 9.1 Principios
+### 8.1 Principios
 
 ```
 1. TODO CHAT ES MULTIUSUARIO
@@ -765,22 +700,22 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
    Los datos enviados quedan como resumen inline en el historial.
 ```
 
-### 9.1.1 Zonas y fases del renderer
+### 8.1.1 Zonas y fases del renderer
 
 Esta subsección define el **modelo canónico** que la ChatApp usa para renderizar un mensaje PML. Es la base de toda la sección 9: cualquier diagrama por componente (§9.5–§9.18) describe cómo ese componente se reparte entre las **zonas** y se mueve entre las **fases** definidas aquí.
 
-#### 9.1.1.1 Modelo del mensaje
+#### 8.1.1.1 Modelo del mensaje
 
 El mensaje PML se descompone en dos clases de contenido:
 
 ```
 mensaje PML = narrativa + tarea
 
-  narrativa  → text, markdown, image, media, facts, dividers, dtable, url
+  narrativa  → text, markdown, image, media, facts, dividers, dtable
                (contenido pasivo; no requiere acción del usuario)
 
   tarea      → único componente interactivo del mensaje
-               (input, choice, toggle, button[s], confirm)
+               (input, choice, toggle, confirm)
 
 tarea = task_narrative + task_controls
 ```
@@ -789,7 +724,7 @@ tarea = task_narrative + task_controls
 
 **Invariante:** un mensaje contiene **0 o 1 tarea**, y **N piezas de narrativa**. Esta es la traducción operativa de la regla "un único punto de captura por turno": el renderer nunca tiene que resolver conflictos entre dos componentes interactivos compitiendo por la atención del usuario.
 
-#### 9.1.1.2 Las tres zonas
+#### 8.1.1.2 Las tres zonas
 
 El renderer divide la superficie del chat en tres zonas con propiedades distintas:
 
@@ -818,7 +753,7 @@ El renderer divide la superficie del chat en tres zonas con propiedades distinta
 │  │   task_controls                                          │    │
 │  │   (privado · efímero · interactivo · único por turno)    │    │
 │  │                                                          │    │
-│  │   El componente vivo: input, choice, buttons, etc.       │    │
+│  │   El componente vivo: input, choice, confirm, etc.       │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -829,7 +764,7 @@ El renderer divide la superficie del chat en tres zonas con propiedades distinta
 - Solo puede haber **un `task_controls` activo** por conversación por usuario disparador en un momento dado. Esto se deriva de la invariante "0 o 1 tarea por mensaje".
 - Las zonas `task_*` no se anidan, no se apilan, no permiten scroll independiente. Son un overlay efímero sobre `shared_history`.
 
-#### 9.1.1.3 Las tres fases
+#### 8.1.1.3 Las tres fases
 
 Toda tarea PML atraviesa el mismo lifecycle de renderización. Los nombres son canónicos:
 
@@ -848,7 +783,7 @@ Toda tarea PML atraviesa el mismo lifecycle de renderización. Los nombres son c
    (privado)              (privado)             (compartido)
 ```
 
-#### 9.1.1.4 Matriz zona × fase
+#### 8.1.1.4 Matriz zona × fase
 
 Resumen operativo de qué hay en cada zona en cada fase:
 
@@ -865,13 +800,13 @@ task_controls     componente interactivo  componente + feedback   (vacío)
                   vivo                    de la interacción
 ```
 
-#### 9.1.1.5 Casos borde
+#### 8.1.1.5 Casos borde
 
 - **Mensaje sin tarea (solo narrativa).** No entra al lifecycle de tarea: la narrativa se renderiza directo en `shared_history` y es visible para todos los participantes desde el primer momento. `task_narrative` y `task_controls` no se usan. Esto refleja la convención universal de chat: un mensaje sin acción pendiente aparece inmediatamente en el historial común.
 - **Mensaje sin narrativa (solo tarea).** `task_narrative` queda vacía durante `first_rendering` y `live_capture`. En `final_rendering`, el snapshot en `shared_history` contiene solo la tarea resuelta. La spec permite emitir `[PML:buttons]` sin texto encima.
 - **Tarea cancelada o expirada.** Subcaso de `final_rendering`: las zonas `task_*` se vacían, pero el snapshot en `shared_history` registra el estado cancelado (no la tarea como si se hubiera resuelto). El renderer decide la apariencia visual del snapshot cancelado.
 
-#### 9.1.1.6 Lo que NO está en PML
+#### 8.1.1.6 Lo que NO está en PML
 
 Las decisiones de **audiencia** (quién es el "disparador", quién ve las zonas privadas, quién recibe el snapshot final) **no se expresan en PML**. PML solo declara qué renderizar. La asignación de audiencia y visibilidad por participante la resuelve el runner del agente vía metadata del turno (envelope), antes de que el PML llegue al renderer.
 
@@ -879,12 +814,12 @@ Esto implica que un mismo bloque PML puede renderizarse simultáneamente como "t
 
 > **Implementación de referencia:** ver `Peppo-runner.md` (sección de routing multiusuario) para el modelo de envelope y la política por tipo de conversación. PML asume que esa capa está resuelta cuando el mensaje llega al renderer.
 
-### 9.2 Aplicación del modelo de zonas y fases a los diagramas
+### 8.2 Aplicación del modelo de zonas y fases a los diagramas
 
-Los diagramas por componente (§9.5–§9.18) usan el modelo canónico definido en §9.1.1:
+Los diagramas por componente (§8.5–§8.18) usan el modelo canónico definido en §8.1.1:
 
-- **Componentes pasivos** (sin tarea: `text`, `markdown`, `image`, `media`, `facts`, `divider`, `dtable`,`url`) se renderizan **directo en `shared_history`**. Un único diagrama; no atraviesan `task_narrative` ni `task_controls`.
-- **Componentes interactivos** (con tarea: `button`, `buttons`, `input`, `toggle`, `choice`, `confirm`) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. Se diagraman tres bloques, uno por fase, mostrando las tres zonas separadas con líneas horizontales.
+- **Componentes pasivos** (sin tarea: text, markdown, image, media, facts, divider, dtable) se renderizan **directo en `shared_history`**. Un único diagrama; no atraviesan `task_narrative` ni `task_controls`.
+- **Componentes interactivos** (con tarea: input, toggle, choice, confirm) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. Se diagraman tres bloques, uno por fase, mostrando las tres zonas separadas con líneas horizontales.
 
 **Convención visual de las zonas en los diagramas:**
 
@@ -907,14 +842,12 @@ La línea horizontal `├──┤` separa las tres zonas. En `final_rendering`,
 
 La fase `live_capture` se manifiesta visualmente distinto según el componente. Cuando un diagrama quiera enfatizar qué clase de actividad ocurre, puede etiquetarla así:
 
-| Componente          | Manifestación de `live_capture`                                    |
-| ------------------- | ------------------------------------------------------------------ |
-| `button`, `buttons` | Tap directo; resolución inmediata, casi sin permanencia en la fase |
-| `url`               | Tap abre destino externo; la app preserva estado para volver       |
-| `input`             | Teclado/selector/GPS/archivo abierto, captura en curso             |
-| `toggle`            | Fila táctil, cambio de estado binario                              |
-| `choice`            | Selección de una o varias opciones                                 |
-| `confirm`           | Diálogo modal explícito; el chat input queda pausado mientras dura |
+| Componente | Manifestación de `live_capture`                                    |
+| ---------- | ------------------------------------------------------------------ |
+| `input`    | Teclado/selector/GPS/archivo abierto, captura en curso             |
+| `toggle`   | Fila táctil, cambio de estado binario                              |
+| `choice`   | Selección de una o varias opciones                                 |
+| `confirm`  | Diálogo modal explícito; el chat input queda pausado mientras dura |
 
 **Lo que pierde el chat input durante `live_capture`:**
 
@@ -924,14 +857,16 @@ El chat input persistente (composer global de la ChatApp) sigue activo durante `
 
 Las zonas `task_narrative` y `task_controls` que aparecen en los diagramas son **privadas al disparador**. Los demás participantes ven `shared_history` igual, pero las dos zonas inferiores pueden mostrar un placeholder (_"Pedro está respondiendo…"_) o quedar ocultas, según la política del runner. La asignación de quién es el disparador no se expresa en PML — viene del envelope del turno (ver §9.1.1.6).
 
-### 9.4 Gestos soportados
+### 8.3 Gestos soportados
 
 | Gesto               | Acción                |
 | ------------------- | --------------------- |
 | Tap en botón/opción | Seleccionar / activar |
 | Mantener presionado | Mostrar tooltip       |
 
-### 9.5 Text
+## 9. UX de componentes standalone (en chat)
+
+### 9.1 Text
 
 Componente **pasivo** (narrativa). Render directo a `shared_history`.
 
@@ -955,7 +890,7 @@ render directo a shared_history
 └─────────────────────────┘
 ```
 
-### 9.6 Markdown
+### 9.2 Markdown
 
 Componente **pasivo** (narrativa). Render directo a `shared_history`.
 
@@ -980,143 +915,56 @@ render directo a shared_history
 └─────────────────────────┘
 ```
 
-### 9.7 URL
+### 9.3 Facts
 
-Componente **pasivo**. Render directo a `shared_history`.
+Componente **pasivo** (narrativa). Render directo a `shared_history`.
 
-- El `label` debe describir la acción o destino, no mostrar la URL completa.
-- Usar `icon="external"` para abrir fuera del chat, `download` para archivos y `copy` para copiar contenido.
-- Renderizar con área táctil mínima de 44px de alto.
-- Si el enlace abre contenido externo, el renderer debe preservar el estado del chat al volver.
+- Usar `facts` para resúmenes, confirmaciones y datos de solo lectura.
+- En móvil, preferir `columns="1"` salvo que las claves y valores sean muy cortos.
+- Mantener claves consistentes y breves.
+- No usar `facts` para datos editables; usar `input` o `choice`.
 
 ```
 render directo a shared_history
 ┌─────────────────────────┐
 │ shared_history          │
-│   ...                   │
-│   Tu factura está lista.│
+│   turnos previos...     │
+│   Resumen               │
 │   ┌───────────────────┐ │
-│   │ Descargar factura │ │ ← URL viva
+│   │ Producto  Nike    │ │
+│   │ Talla     42      │ │ ← clave-valor
+│   │ Precio    $2,499  │ │
 │   └───────────────────┘ │
+│   (visible para todos)  │
 └─────────────────────────┘
 ```
 
-### 9.8 Button
+### 9.4 DTable
 
-Componente **interactivo** (tarea). Lifecycle completo. `live_capture` es prácticamente instantáneo: un tap resuelve la tarea.
+Componente **pasivo** (narrativa). Render directo a `shared_history`. El scroll horizontal es interacción interna del componente; no produce `[[INTERACTION]]` ni cambia el estado de la tarea.
 
-- El texto del botón debe ser una acción clara: "Confirmar pago", "Ver factura", "Cancelar".
-- Usar `style="primary"` solo para la acción principal del bloque.
-- Usar `style="danger"` únicamente para acciones destructivas o irreversibles.
-- Si `loading="true"`, bloquear taps repetidos y mantener visible el estado de progreso.
-- Si `confirmText` está presente, mostrar confirmación antes de emitir `[[INTERACTION]]`.
+- Usar `dtable` solo cuando la comparación por filas y columnas sea esencial.
+- En móvil, permitir scroll horizontal o transformar a filas tipo lista si la tabla es ancha.
+- Mantener encabezados cortos y valores escaneables.
+- Evitar celdas con párrafos largos; si el contenido crece, preferir `facts` o Markdown estructurado.
 
 ```
-first_rendering (privado al disparador)
+render directo a shared_history
 ┌─────────────────────────┐
 │ shared_history          │
-│   ...                   │
-├─────────────────────────┤
-│ task_narrative          │
-│   Revisa el total antes │
-│   de pagar.             │
-├─────────────────────────┤
-│ task_controls           │
-│  ┌───────────────────┐  │
-│  │ Confirmar pago    │  │ ← primary
-│  └───────────────────┘  │
-└─────────────────────────┘
-
-live_capture (tap; instantáneo)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-├─────────────────────────┤
-│ task_narrative          │
-│   Revisa el total antes │
-│   de pagar.             │
-├─────────────────────────┤
-│ task_controls           │
-│  ┌───────────────────┐  │
-│  │ ⏳ Procesando...  │  │ ← tap (instantaneous)
-│  └───────────────────┘  │
-└─────────────────────────┘
-
-final_rendering (snapshot compartido)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-│   Revisa el total antes │
-│   de pagar.             │
-│   Usuario: pago         │ ← snapshot
-│   Agente: Pago recibido.│
-├─────────────────────────┤
-│ task_narrative   (vacío)│
-├─────────────────────────┤
-│ task_controls    (vacío)│
+│   turnos previos...     │
+│   Comparativa       →   │ ← scroll horizontal
+│   ┌───────────────────┐ │
+│   │ Plan │ Precio │... │
+│   │ Basic│ $9     │... │
+│   │ Pro  │ $29    │... │
+│   └───────────────────┘ │
+│   Desliza para ver más  │
+│   (visible para todos)  │
 └─────────────────────────┘
 ```
 
-### 9.9 Buttons
-
-Componente **interactivo** (tarea). Lifecycle completo. Un único tap entre las opciones cierra la tarea.
-
-- Mostrar máximo 5 opciones, como define la especificación; para más opciones usar `choice`.
-- Ordenar de izquierda a derecha o de arriba abajo por prioridad de uso.
-- En pantallas pequeñas, permitir wrap o apilar botones para evitar texto truncado.
-- No mezclar varias acciones primarias dentro del mismo grupo.
-
-```
-first_rendering (privado al disparador)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-├─────────────────────────┤
-│ task_narrative          │
-│   ¿Qué deseas hacer?    │
-├─────────────────────────┤
-│ task_controls           │
-│  ┌─────────┐ ┌───────┐  │
-│  │Rastrear │ │Comprar│  │
-│  └─────────┘ └───────┘  │
-│  ┌───────────────────┐  │
-│  │ Hablar con soporte│  │
-│  └───────────────────┘  │
-└─────────────────────────┘
-
-live_capture (tap en una opción)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-├─────────────────────────┤
-│ task_narrative          │
-│   ¿Qué deseas hacer?    │
-├─────────────────────────┤
-│ task_controls           │
-│  ┌─────────┐ ┌───────┐  │
-│  │Rastrear●│ │Comprar│  │ ← seleccionado
-│  └─────────┘ └───────┘  │
-│  ┌───────────────────┐  │
-│  │ Hablar con soporte│  │
-│  └───────────────────┘  │
-└─────────────────────────┘
-
-final_rendering (snapshot compartido)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-│   ¿Qué deseas hacer?    │
-│   Usuario: rastrear     │ ← snapshot
-│   Agente: Busco el      │
-│   estado del pedido.    │
-├─────────────────────────┤
-│ task_narrative   (vacío)│
-├─────────────────────────┤
-│ task_controls    (vacío)│
-└─────────────────────────┘
-```
-
-### 9.10 Image
+### 9.5 Image
 
 Componente **pasivo** (narrativa). Render directo a `shared_history`.
 
@@ -1141,7 +989,7 @@ render directo a shared_history
 └─────────────────────────┘
 ```
 
-### 9.11 Media
+### 9.6 Media
 
 Componente **pasivo** (narrativa). Render directo a `shared_history`. La reproducción es interacción interna del componente (no emite `[[INTERACTION]]` al agente), por lo que no atraviesa el lifecycle de tarea.
 
@@ -1166,7 +1014,29 @@ render directo a shared_history
 └─────────────────────────┘
 ```
 
-### 9.12 Input
+### 9.7 Divider
+
+Componente **pasivo** (narrativa). Render directo a `shared_history`. Suele aparecer dentro de un mensaje que también contiene una tarea (`buttons`, etc.), en cuyo caso el divider acompaña a la narrativa en el snapshot final.
+
+- Usar `divider` para separar grupos de contenido, no después de cada elemento.
+- Si tiene `label`, el texto debe ser corto y secundario.
+- Mantener contraste bajo para que no compita con acciones o información principal.
+- Evitar varios divisores consecutivos dentro del mismo mensaje.
+
+```
+render directo a shared_history (ejemplo con narrativa adyacente)
+┌─────────────────────────┐
+│ shared_history          │
+│   turnos previos...     │
+│   Hay una opción        │
+│   principal y otras     │
+│   alternativas.         │
+│   ─── O continúa con ───│ ← divider
+│   (visible para todos)  │
+└─────────────────────────┘
+```
+
+### 9.8 Input
 
 Componente **interactivo** (tarea). Lifecycle completo. `live_capture` abre teclado, selector, GPS o picker de archivo según `type`.
 
@@ -1246,7 +1116,7 @@ final_rendering (snapshot compartido)
 └─────────────────────────┘
 ```
 
-### 9.13 Toggle
+### 9.9 Toggle
 
 Componente **interactivo** (tarea). Lifecycle completo. `live_capture` es un tap binario que cambia el estado.
 
@@ -1302,7 +1172,7 @@ final_rendering (snapshot compartido)
 └─────────────────────────┘
 ```
 
-### 9.14 Choice
+### 9.10 Choice
 
 Componente **interactivo** (tarea). Lifecycle completo. En `multi="true"`, `live_capture` puede extenderse mientras el usuario marca/desmarca opciones; cierra en submit explícito.
 
@@ -1360,78 +1230,7 @@ final_rendering (snapshot compartido)
 └─────────────────────────┘
 ```
 
-### 9.15 Facts
-
-Componente **pasivo** (narrativa). Render directo a `shared_history`.
-
-- Usar `facts` para resúmenes, confirmaciones y datos de solo lectura.
-- En móvil, preferir `columns="1"` salvo que las claves y valores sean muy cortos.
-- Mantener claves consistentes y breves.
-- No usar `facts` para datos editables; usar `input` o `choice`.
-
-```
-render directo a shared_history
-┌─────────────────────────┐
-│ shared_history          │
-│   turnos previos...     │
-│   Resumen               │
-│   ┌───────────────────┐ │
-│   │ Producto  Nike    │ │
-│   │ Talla     42      │ │ ← clave-valor
-│   │ Precio    $2,499  │ │
-│   └───────────────────┘ │
-│   (visible para todos)  │
-└─────────────────────────┘
-```
-
-### 9.16 Divider
-
-Componente **pasivo** (narrativa). Render directo a `shared_history`. Suele aparecer dentro de un mensaje que también contiene una tarea (`buttons`, etc.), en cuyo caso el divider acompaña a la narrativa en el snapshot final.
-
-- Usar `divider` para separar grupos de contenido, no después de cada elemento.
-- Si tiene `label`, el texto debe ser corto y secundario.
-- Mantener contraste bajo para que no compita con acciones o información principal.
-- Evitar varios divisores consecutivos dentro del mismo mensaje.
-
-```
-render directo a shared_history (ejemplo con narrativa adyacente)
-┌─────────────────────────┐
-│ shared_history          │
-│   turnos previos...     │
-│   Hay una opción        │
-│   principal y otras     │
-│   alternativas.         │
-│   ─── O continúa con ───│ ← divider
-│   (visible para todos)  │
-└─────────────────────────┘
-```
-
-### 9.17 DTable
-
-Componente **pasivo** (narrativa). Render directo a `shared_history`. El scroll horizontal es interacción interna del componente; no produce `[[INTERACTION]]` ni cambia el estado de la tarea.
-
-- Usar `dtable` solo cuando la comparación por filas y columnas sea esencial.
-- En móvil, permitir scroll horizontal o transformar a filas tipo lista si la tabla es ancha.
-- Mantener encabezados cortos y valores escaneables.
-- Evitar celdas con párrafos largos; si el contenido crece, preferir `facts` o Markdown estructurado.
-
-```
-render directo a shared_history
-┌─────────────────────────┐
-│ shared_history          │
-│   turnos previos...     │
-│   Comparativa       →   │ ← scroll horizontal
-│   ┌───────────────────┐ │
-│   │ Plan │ Precio │... │
-│   │ Basic│ $9     │... │
-│   │ Pro  │ $29    │... │
-│   └───────────────────┘ │
-│   Desliza para ver más  │
-│   (visible para todos)  │
-└─────────────────────────┘
-```
-
-### 9.18 Confirm
+### 9.11 Confirm
 
 Componente **interactivo** (tarea). Lifecycle completo. `live_capture` se materializa como un diálogo modal explícito; el chat input persistente queda pausado mientras dura.
 
@@ -1561,9 +1360,6 @@ PML v1.1 — Mayo 2026
 ├────────────────┼───────────┼────────────────────────────────────────┤
 │ text            │ Standalone│ Texto estático con estilo              │
 │ markdown        │ Standalone│ Texto con formato Markdown             │
-│ url             │ Standalone│ Enlace clickeable                      │
-│ button          │ Standalone│ Acción individual                      │
-│ buttons         │ Standalone│ Fila de acciones (máx 5)               │
 │ image           │ Standalone│ Imagen estática                        │
 │ media           │ Standalone│ Video o audio                          │
 │ input           │ Ambos     │ Campo de entrada (+ ref, auto, calc)   │
@@ -1608,8 +1404,7 @@ child           = text | markdown | self_closing | container ;
 
 attr_list       = { ATTR_NAME "=" "\"" ATTR_VALUE "\"" } ;
 
-TYPE            = "text" | "markdown" | "url" | "button" | "buttons"
-                | "image" | "media" | "input" | "toggle" | "choice" | "opt"
+TYPE            = "text" | "markdown" | "image" | "media" | "input" | "toggle" | "choice" | "opt"
                 | "facts" | "divider" | "dtable" | "confirm" ;
 ```
 
