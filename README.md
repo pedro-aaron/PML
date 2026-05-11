@@ -29,17 +29,6 @@ Abril 2026
     4.12 Divider
     4.13 DTable
     4.14 Confirm
- 5. Form (componente contenedor principal)
-    5.1  Estructura general
-    5.2  Header
-    5.3  Data Sources
-    5.4  Components (campos del formulario)
-    5.5  Layout (rows y columns)
-    5.6  Components Interactions
-    5.7  Footer
-    5.8  Submit
-    5.9  Modos de presentación
-    5.10 Ejemplo completo
  6. Modelo de interacción
  7. Reglas de composición
  8. Guías para LLMs / Agentes
@@ -158,6 +147,14 @@ Hola Pedro, ¿qué deseas hacer hoy?
 [PML:button id="c" label='Dijo: "hola"' value="confirm" style="primary" /]
 ```
 
+### 2.7 Tipos de componentes PML
+
+```
+tipo            = "text" | "markdown" | "url" | "button" | "buttons"
+                | "image" | "media" | "input" | "toggle" | "choice" | "opt"
+                | "facts" | "divider" | "dtable" | "confirm" ;
+```
+
 ---
 
 ## 3. Atributos globales
@@ -176,7 +173,7 @@ Aplican a **todos** los componentes PML:
 
 ## 4. Componentes standalone (en chat)
 
-Estos componentes se usan **fuera de un Form**, directamente en el flujo del chat.
+Estos componentes se usan directamente en el flujo del chat.
 
 ---
 
@@ -352,9 +349,9 @@ Reproductor de video o audio.
 
 Campo de entrada de datos.
 
-**Tipos disponibles fuera de Form:**
+**Tipos disponibles:**
 
-`text` / `number` / `email` / `tel` / `url` / `password` / `date` / `time` / `textarea` / `location` / `file`
+`text` / `number` / `email` / `tel` / `url` / `password` / `date` / `time` / `location` / `file`
 
 | Atributo       | Requerido | Tipo             | Descripción                     |
 | -------------- | --------- | ---------------- | ------------------------------- |
@@ -604,705 +601,13 @@ Si el usuario cancela:
 
 ---
 
-## 5. Form — Componente contenedor principal
-
-El `Form` es el componente más complejo y poderoso de PML. No es solo un contenedor de inputs — es un **mini motor de lógica declarativa** que maneja:
-
-- Campos con dependencias entre sí
-- Visibilidad condicional
-- Auto-populado desde fuentes de datos
-- Campos calculados
-- Validación en cascada
-- Layout responsivo
-- Condición de submit
-
-**La lógica de negocio vive en el renderer (Chat App), no en el agente.**
-
----
-
-### 5.1 Estructura general
-
-```
-[PML:form id="..." mode="..." submitLabel="..." ...]
-
-  [PML:header]
-    ...
-  [/PML:header]
-
-  [PML:body]
-
-    [PML:source ... /]
-
-    [PML:input ... /]
-    [PML:toggle ... /]
-    [PML:choice ... /]
-    ...
-
-    [PML:row]
-      [PML:col ...] ... [/PML:col]
-    [/PML:row]
-
-    [PML:interactions]
-      [PML:acceptation ... /]
-      [PML:visibility ... /]
-    [/PML:interactions]
-
-    [PML:button subtype="submit" ... /]
-
-  [/PML:body]
-
-  [PML:footer]
-    ...
-  [/PML:footer]
-
-[/PML:form]
-```
-
-**Atributos del Form:**
-
-| Atributo      | Requerido | Tipo                           | Descripción                                        |
-| ------------- | --------- | ------------------------------ | -------------------------------------------------- |
-| `id`          | Sí        | string                         | Identificador único                                |
-| `mode`        | No        | `inline` / `stepped` / `modal` | Presentación. Default: `inline`.                   |
-| `submitLabel` | No        | string                         | Texto del botón enviar. Default: `"Enviar"`.       |
-| `cancelLabel` | No        | string                         | Texto del botón cancelar. Default: `"Cancelar"`.   |
-| `showSummary` | No        | `true` / `false`               | Resumen post-envío. Default: `true`.               |
-| `language`    | No        | `es` / `en`                    | Idioma de labels y mensajes. Default: `es`.        |
-| `autoSave`    | No        | `true` / `false`               | Guardado automático de borrador. Default: `false`. |
-
----
-
-### 5.2 Header
-
-Sección superior del formulario con título y descripción.
-
-```
-[PML:header]
-  [PML:text type="title" size="large" style="bold"]
-    Crear Bitácora de Nómina
-  [/PML:text]
-  [PML:text type="paragraph" style="muted" size="small"]
-    Registra las horas trabajadas por los empleados,
-    incluyendo detalles de órdenes de trabajo y clientes.
-  [/PML:text]
-[/PML:header]
-```
-
-**Hijos permitidos:** `Text`, `Markdown`, `Image`, `URL`, `Badge`
-
----
-
-### 5.3 Data Sources
-
-Definiciones de fuentes de datos para campos de tipo `reference` (búsqueda con datos externos).
-
-| Atributo  | Requerido | Tipo   | Descripción                                             |
-| --------- | --------- | ------ | ------------------------------------------------------- |
-| `id`      | Sí        | string | Identificador de la fuente                              |
-| `table`   | Sí        | string | Nombre de la tabla/colección                            |
-| `fields`  | Sí        | string | Campos a retornar, separados por coma                   |
-| `idField` | No        | string | Campo identificador. Default: primer campo de `fields`. |
-| `search`  | No        | string | Campos donde buscar, separados por coma                 |
-| `sort`    | No        | string | Ordenamiento. Formato: `campo:DIRECCION` (ASC/DESC).    |
-| `filter`  | No        | string | Filtros. Formato: `campo:valor`.                        |
-| `top`     | No        | number | Máximo de resultados. Default: `10`.                    |
-
-**Ejemplo:**
-
-```
-[PML:source id="empleados" table="empleados"
-  fields="id,nombre,apellidos"
-  search="nombre,apellidos"
-  sort="apellidos:ASC,nombre:ASC"
-  filter="activo:true" top="3" /]
-
-[PML:source id="ordenes_trabajo" table="ordenes_de_trabajo"
-  fields="folio,cliente,numero_de_parte"
-  search="folio,cliente"
-  sort="folio:ASC"
-  filter="activo:true" top="3" /]
-```
-
-**Nota:** Los `source` son declaraciones. La Chat App es la que ejecuta la consulta real contra la base de datos o API. El agente solo describe **qué** datos necesita, no **cómo** obtenerlos.
-
----
-
-### 5.4 Components (campos del formulario)
-
-Dentro de un Form, los campos tienen una estructura enriquecida. Cada campo puede tener:
-
-- **type** — qué tipo de componente es
-- **behavior** — cómo se comporta
-- **look_and_feel** — cómo se ve y qué textos muestra
-- **validation** — qué reglas cumple y qué mensajes muestra
-
-#### 5.4.1 Tipos de campo dentro de Form
-
-| Tipo              | Descripción                   | Ejemplo de uso           |
-| ----------------- | ----------------------------- | ------------------------ |
-| `text`            | Texto libre                   | Nombre, dirección        |
-| `number`          | Numérico                      | Cantidad, edad           |
-| `email`           | Email                         | Correo electrónico       |
-| `tel`             | Teléfono                      | Número telefónico        |
-| `password`        | Contraseña                    | Clave secreta            |
-| `date`            | Fecha                         | Fecha de nacimiento      |
-| `time`            | Hora                          | Hora de inicio/fin       |
-| `textarea`        | Texto largo                   | Comentarios, notas       |
-| `location`        | Ubicación GPS                 | Dirección, coordenadas   |
-| `file`            | Archivo                       | Foto, documento          |
-| `toggle`          | Sí/no                         | Acepto términos          |
-| `choice`          | Selección                     | País, talla, categoría   |
-| `reference`       | Búsqueda con fuente de datos  | Empleado, producto       |
-| `auto_populate`   | Auto-llenado desde otro campo | Cliente, número de parte |
-| `calculated`      | Valor computado               | Horas trabajadas, total  |
-| `button` (submit) | Botón de envío                | Guardar, enviar          |
-
-#### 5.4.2 Campo estándar (input, toggle, choice)
-
-```
-[PML:input id="fecha" type="date"
-  label="Fecha"
-  placeholder="Selecciona una fecha"
-  helpText="Fecha en que se realizó el trabajo"
-  default="today"
-  required="true"
-  errorMessage="La fecha es obligatoria" /]
-```
-
-**Atributos extendidos dentro de Form (adicionales a los de standalone):**
-
-| Atributo   | Tipo             | Descripción                                       |
-| ---------- | ---------------- | ------------------------------------------------- |
-| `helpText` | string           | Texto de ayuda debajo del campo                   |
-| `default`  | string           | Valor por defecto (`today`, `now`, valor literal) |
-| `readonly` | `true` / `false` | Solo lectura. Default: `false`.                   |
-
-#### 5.4.3 Campo `reference` (búsqueda con data source)
-
-Se usa para buscar y seleccionar datos de una fuente externa.
-
-```
-[PML:input id="empleado" type="reference"
-  source="empleados"
-  display="{{nombre}} {{apellidos}}"
-  searchMinChars="2"
-  label="Empleado"
-  placeholder="Buscar empleado..."
-  helpText="Seleccione el empleado que realizó el trabajo"
-  required="true"
-  errorMessage="Debe seleccionar un empleado" /]
-```
-
-| Atributo adicional | Tipo   | Descripción                                               |
-| ------------------ | ------ | --------------------------------------------------------- |
-| `source`           | string | Referencia al `id` de un `[PML:source]`                   |
-| `display`          | string | Template de visualización con `{{campo}}`                 |
-| `searchMinChars`   | number | Mínimo de caracteres para activar búsqueda. Default: `2`. |
-
-**Interacción generada al seleccionar:**
-
-```
-[[INTERACTION]] id=empleado value=3
-```
-
-El valor es el `idField` del registro seleccionado.
-
-#### 5.4.4 Campo `auto_populate` (auto-llenado)
-
-Se llena automáticamente cuando otro campo cambia.
-
-```
-[PML:input id="cliente" type="auto_populate"
-  trigger="folio"
-  display="{{cliente}}"
-  label="Cliente"
-  placeholder="Cliente asociado"
-  helpText="Se llena al seleccionar la orden de trabajo"
-  readonly="true" /]
-```
-
-| Atributo adicional | Tipo   | Descripción                                        |
-| ------------------ | ------ | -------------------------------------------------- |
-| `trigger`          | string | `id` del campo que dispara el auto-llenado         |
-| `display`          | string | Template con `{{campo}}` del registro seleccionado |
-
-**Regla del renderer:**
-Cuando el campo `trigger` acepta un valor, el renderer busca el registro correspondiente en el data source y llena este campo con el valor del campo indicado en `display`.
-
-#### 5.4.5 Campo `calculated` (calculado)
-
-Su valor se computa a partir de otros campos.
-
-```
-[PML:input id="horas_trabajadas" type="calculated"
-  triggerFields="horario_inicio,horario_fin"
-  formula="(horario_fin - horario_inicio) / 3600"
-  precision="2"
-  label="Horas Trabajadas"
-  suffix="hrs"
-  helpText="Calculado automáticamente"
-  readonly="true"
-  errorMessage="Las horas deben ser entre 0.25 y 24"
-  validate="min:0.25,max:24" /]
-```
-
-| Atributo adicional | Tipo   | Descripción                             |
-| ------------------ | ------ | --------------------------------------- |
-| `triggerFields`    | string | Campos que disparan el recálculo        |
-| `formula`          | string | Expresión de cálculo usando `{{campo}}` |
-| `precision`        | number | Decimales a mostrar                     |
-
-**Regla del renderer:**
-Cuando cualquiera de los `triggerFields` cambia de valor, el renderer recalcula la fórmula y actualiza el valor del campo.
-
-#### 5.4.6 Botón submit
-
-```
-[PML:button id="submit" subtype="submit"
-  label="Guardar Bitácora"
-  style="primary"
-  confirmTitle="Confirmar guardado"
-  confirmMessage="¿Estás seguro de que deseas guardar esta bitácora?"
-  confirmLabel="Sí, guardar"
-  cancelLabel="Cancelar" /]
-```
-
-| Atributo adicional | Tipo     | Descripción                                      |
-| ------------------ | -------- | ------------------------------------------------ |
-| `subtype`          | `submit` | Marca este botón como el botón de envío del form |
-| `confirmTitle`     | string   | Título del diálogo de confirmación               |
-| `confirmMessage`   | string   | Mensaje del diálogo                              |
-| `confirmLabel`     | string   | Botón de confirmación                            |
-| `cancelLabel`      | string   | Botón de cancelación                             |
-
-**Regla del renderer:**
-El botón submit solo se habilita cuando **todos los campos visibles están aceptados** (ver sección 5.6).
-
----
-
-### 5.5 Layout (rows y columns)
-
-Organiza los campos en filas y columnas responsivas.
-
-```
-[PML:row]
-  [PML:col mobile="12" tablet="6" desktop="4"]
-    [PML:input id="horario_inicio" type="time" label="Hora de Inicio" /]
-  [/PML:col]
-  [PML:col mobile="12" tablet="6" desktop="4"]
-    [PML:input id="horario_fin" type="time" label="Hora de Fin" /]
-  [/PML:col]
-  [PML:col mobile="12" tablet="12" desktop="4"]
-    [PML:input id="horas_trabajadas" type="calculated" ... /]
-  [/PML:col]
-[/PML:row]
-```
-
-**Atributos de `col`:**
-
-| Atributo  | Requerido | Tipo     | Descripción                      |
-| --------- | --------- | -------- | -------------------------------- |
-| `mobile`  | No        | `1`-`12` | Ancho en móvil. Default: `12`.   |
-| `tablet`  | No        | `1`-`12` | Ancho en tablet. Default: `12`.  |
-| `desktop` | No        | `1`-`12` | Ancho en desktop. Default: `12`. |
-
-**Sistema de columnas:** Basado en grid de 12 columnas (estándar CSS).
-
-**Reglas:**
-
-- Si no se especifica layout, los campos se apilan verticalmente (una columna)
-- En móvil, cualquier columna > 6 se colapsa a 12 automáticamente
-- `PML:row` y `PML:col` solo existen dentro de `PML:body` de un Form
-- Cada `PML:col` contiene exactamente **un** componente
-
----
-
-### 5.6 Components Interactions
-
-Esta es la sección de **lógica declarativa** del formulario. El renderer la evalúa en tiempo real mientras el usuario interactúa.
-
-#### 5.6.1 Acceptation Rules
-
-Define **cuándo un componente se considera "aceptado"**.
-
-```
-[PML:interactions]
-  [PML:acceptation id="submit" when="fecha,empleado,horario_inicio,horario_fin,folio" /]
-  [PML:acceptation id="horas_trabajadas" when="horario_inicio,horario_fin" /]
-  [PML:acceptation id="cliente" when="folio" /]
-  [PML:acceptation id="numero_de_parte" when="folio" /]
-[/PML:interactions]
-```
-
-**Sintaxis:**
-
-```
-[PML:acceptation id="campo_objetivo" when="campo1,campo2,..." /]
-```
-
-**Significado:** El campo `campo_objetivo` se considera aceptado cuando **todos** los campos listados en `when` están aceptados.
-
-**Ejemplo interpretado:**
-
-```
-[PML:acceptation id="submit" when="fecha,empleado,horario_inicio,horario_fin,folio" /]
-```
-
-> El botón submit se habilita solo cuando fecha, empleado, horario_inicio, horario_fin Y folio están todos aceptados.
-
-#### 5.6.2 Visibility Rules
-
-Define **cuándo un componente se muestra u oculta**.
-
-```
-[PML:visibility id="horas_trabajadas" showWhen="horario_inicio,horario_fin" /]
-[PML:visibility id="cliente" showWhen="folio" /]
-[PML:visibility id="numero_de_parte" showWhen="folio" /]
-```
-
-**Sintaxis:**
-
-```
-[PML:visibility id="campo_objetivo" showWhen="campo1,campo2,..." /]
-```
-
-**Significado:** El campo `campo_objetivo` se muestra solo cuando **todos** los campos listados en `showWhen` están aceptados.
-
-**Ejemplo interpretado:**
-
-```
-[PML:visibility id="cliente" showWhen="folio" /]
-```
-
-> El campo "cliente" solo aparece cuando el campo "folio" ha sido aceptado (el usuario seleccionó una orden de trabajo válida).
-
-#### 5.6.3 Regla de aceptación (definición formal)
-
-```
-Un componente se considera "ACEPTADO" cuando:
-
-  1. Está OCULTO (visible="false" o su visibility rule no se cumple)
-     → Se acepta AUTOMÁTICAMENTE
-
-  2. Está VISIBLE y CUMPLE todas sus reglas de validación individuales
-     → Se acepta por VALIDACIÓN
-
-Un componente NO aceptado:
-  - Está visible
-  - Y tiene al menos una regla de validación sin cumplir
-```
-
-#### 5.6.4 Orden de evaluación del renderer
-
-```
-Paso 1: Evaluar visibilidad de componentes SIN dependencias
-        (los que no tienen visibility rules → siempre visibles)
-
-Paso 2: Evaluar validación de componentes visibles
-        → Determinar aceptación individual de cada uno
-
-Paso 3: Evaluar visibilidad de componentes CON dependencias
-        (usando la aceptación de los campos del paso 2)
-
-Paso 4: Re-evaluar aceptación considerando campos ocultos
-        (ocultos = aceptados automáticamente)
-
-Paso 5: Evaluar acceptation_rules del submit
-        → Habilitar o deshabilitar botón de envío
-
-Este ciclo se repite CADA VEZ que el usuario modifica un campo.
-```
-
-#### 5.6.5 Ejemplo de flujo de evaluación
-
-```
-Estado inicial:
-  fecha: visible, vacío → NO aceptado
-  empleado: visible, vacío → NO aceptado
-  horario_inicio: visible, vacío → NO aceptado
-  horario_fin: visible, vacío → NO aceptado
-  horas_trabajadas: OCULTO (horario_inicio y horario_fin no aceptados) → aceptado automáticamente
-  folio: visible, vacío → NO aceptado
-  cliente: OCULTO (folio no aceptado) → aceptado automáticamente
-  numero_de_parte: OCULTO (folio no aceptado) → aceptado automáticamente
-  submit: DESHABILITADO (fecha, empleado, horario_inicio, horario_fin, folio no aceptados)
-
-El usuario selecciona horario_inicio = "08:00":
-  horario_inicio: VISIBLE, válido → ACEPTADO
-  horas_trabajadas: sigue OCULTO (horario_fin no aceptado) → aceptado automáticamente
-  submit: sigue DESHABILITADO
-
-El usuario selecciona horario_fin = "17:00":
-  horario_fin: VISIBLE, válido → ACEPTADO
-  horas_trabajadas: ambos triggers aceptados → SE MUESTRA → se calcula = 9 hrs → ACEPTADO
-  submit: sigue DESHABILITADO (faltan fecha, empleado, folio)
-
-El usuario selecciona folio = "OT-001":
-  folio: VISIBLE, válido → ACEPTADO
-  cliente: folio aceptado → SE MUESTRA → auto-poblado = "Empresa A" → ACEPTADO
-  numero_de_parte: folio aceptado → SE MUESTRA → auto-poblado = "NP-123" → ACEPTADO
-  submit: sigue DESHABILITADO (faltan fecha, empleado)
-
-El usuario selecciona fecha y empleado:
-  fecha: ACEPTADO
-  empleado: ACEPTADO
-  submit: TODOS los campos requeridos aceptados → HABILITADO ✓
-```
-
----
-
-### 5.7 Footer
-
-Sección inferior del formulario.
-
-```
-[PML:footer]
-  [PML:text type="muted" size="small" align="right"]
-    Desarrollado por PEPPO
-  [/PML:text]
-[/PML:footer]
-```
-
-**Hijos permitidos:** `Text`, `Markdown`, `URL`
-
----
-
-### 5.8 Submit — Flujo completo
-
-```
-1. Usuario presiona submit (habilitado)
-2. Si confirmTitle está definido → mostrar diálogo de confirmación
-3. Si confirma → enviar [[FORM_SUBMIT]]
-4. Si showSummary="true" → renderer muestra resumen inline
-5. Chat input del chat se restaura
-6. Agente continúa la conversación
-```
-
-**Interacción generada:**
-
-```
-[[FORM_SUBMIT]] id=bitacora&fecha=2026-04-20&empleado=3&horario_inicio=08:00&horario_fin=17:00&horas_trabajadas=9.00&folio=OT-001&cliente=Empresa+A&numero_de_parte=NP-123
-```
-
-**Si el usuario cancela el formulario en cualquier momento:**
-
-```
-[[INTERACTION]] id=bitacora value=cancelled
-```
-
----
-
-### 5.9 Modos de presentación
-
-#### `mode="inline"` (default)
-
-Todos los campos visibles simultáneamente, scrollable. Ideal para 1-3 campos.
-
-```
-[PML:form id="contacto" mode="inline" submitLabel="Enviar"]
-  [PML:input id="nombre" type="text" label="Nombre" required="true" /]
-  [PML:input id="email" type="email" label="Email" required="true" /]
-[/PML:form]
-```
-
-#### `mode="stepped"`
-
-Un campo a la vez con navegación secuencial. Ideal para 3+ campos en móvil.
-
-```
-[PML:form id="registro" mode="stepped" title="Crear cuenta"
-  submitLabel="Crear cuenta" cancelLabel="Volver al chat"]
-  [PML:input id="nombre" type="text" label="¿Cuál es tu nombre?" required="true" /]
-  [PML:input id="email" type="email" label="¿Tu email?" required="true" /]
-  [PML:input id="telefono" type="tel" label="¿Tu teléfono?" prefix="+52" required="true" /]
-[/PML:form]
-```
-
-**Flujo stepped:**
-
-```
-Paso 1: Nombre    → [Siguiente] → valida required
-Paso 2: Email     → [Siguiente] → valida required + formato
-Paso 3: Teléfono  → [Crear cuenta] → valida required
-```
-
-#### `mode="modal"`
-
-Bottom sheet modal. Chat oscurecido detrás. Ideal para formularios largos o complejos.
-
-```
-[PML:form id="solicitud" mode="modal" title="Solicitud de crédito"
-  submitLabel="Enviar solicitud"]
-  ...
-[/PML:form]
-```
-
----
-
-### 5.10 Ejemplo completo del JSON de referencia traducido a PML
-
-Este es el equivalente PML del formulario de bitácora de nómina que se compartió como referencia:
-
-```
-[PML:form id="bitacora_nomina" mode="inline"
-  submitLabel="Guardar Bitácora" showSummary="true" language="es"]
-
-  [PML:header]
-    [PML:text type="title" size="large" style="bold"]
-      Crear Bitácora de Nómina
-    [/PML:text]
-    [PML:text type="paragraph" style="muted" size="small"]
-      Registra las horas trabajadas por los empleados,
-      incluyendo detalles de órdenes de trabajo y clientes.
-    [/PML:text]
-  [/PML:header]
-
-  [PML:body]
-
-    [PML:source id="empleados" table="empleados"
-      fields="id,nombre,apellidos" idField="id"
-      search="nombre,apellidos"
-      sort="apellidos:ASC,nombre:ASC"
-      filter="activo:true" top="3" /]
-
-    [PML:source id="ordenes_trabajo" table="ordenes_de_trabajo"
-      fields="folio,cliente,numero_de_parte" idField="folio"
-      search="folio,cliente"
-      sort="folio:ASC"
-      filter="activo:true" top="3" /]
-
-    [PML:input id="fecha" type="date"
-      label="Fecha"
-      placeholder="Seleccione una fecha"
-      helpText="Fecha en que se realizó el trabajo"
-      default="today"
-      required="true"
-      errorMessage="La fecha es obligatoria" /]
-
-    [PML:input id="empleado" type="reference"
-      source="empleados"
-      display="{{nombre}} {{apellidos}}"
-      searchMinChars="2"
-      label="Empleado"
-      placeholder="Buscar empleado..."
-      helpText="Seleccione el empleado que realizó el trabajo"
-      required="true"
-      errorMessage="Debe seleccionar un empleado" /]
-
-    [PML:row]
-      [PML:col mobile="12" tablet="6" desktop="4"]
-        [PML:input id="horario_inicio" type="time"
-          label="Hora de Inicio"
-          placeholder="00:00"
-          helpText="Hora en que comenzó el trabajo"
-          format="12h"
-          required="true"
-          errorMessage="La hora de inicio es obligatoria" /]
-      [/PML:col]
-      [PML:col mobile="12" tablet="6" desktop="4"]
-        [PML:input id="horario_fin" type="time"
-          label="Hora de Fin"
-          placeholder="00:00"
-          helpText="Hora en que finalizó el trabajo"
-          format="12h"
-          required="true"
-          after="horario_inicio"
-          errorMessage="La hora de fin debe ser posterior a la hora de inicio" /]
-      [/PML:col]
-      [PML:col mobile="12" tablet="12" desktop="4"]
-        [PML:input id="horas_trabajadas" type="calculated"
-          triggerFields="horario_inicio,horario_fin"
-          formula="(horario_fin - horario_inicio) / 3600"
-          precision="2"
-          label="Horas Trabajadas"
-          suffix="hrs"
-          helpText="Calculado automáticamente"
-          readonly="true"
-          validate="min:0.25,max:24"
-          errorMessage="Las horas deben ser entre 0.25 y 24" /]
-      [/PML:col]
-    [/PML:row]
-
-    [PML:row]
-      [PML:col mobile="12" tablet="12" desktop="4"]
-        [PML:input id="folio" type="reference"
-          source="ordenes_trabajo"
-          display="{{folio}} - {{cliente}}"
-          searchMinChars="1"
-          label="Orden de Trabajo"
-          placeholder="Buscar orden de trabajo..."
-          helpText="Seleccione la orden de trabajo asociada"
-          required="true"
-          errorMessage="Debe seleccionar una orden de trabajo" /]
-      [/PML:col]
-      [PML:col mobile="12" tablet="6" desktop="4"]
-        [PML:input id="cliente" type="auto_populate"
-          trigger="folio"
-          display="{{cliente}}"
-          label="Cliente"
-          placeholder="Cliente asociado"
-          helpText="Se llena al seleccionar la orden de trabajo"
-          readonly="true" /]
-      [/PML:col]
-      [PML:col mobile="12" tablet="6" desktop="4"]
-        [PML:input id="numero_de_parte" type="auto_populate"
-          trigger="folio"
-          display="{{numero_de_parte}}"
-          label="Número de Parte"
-          placeholder="Número de parte asociado"
-          helpText="Se llena al seleccionar la orden de trabajo"
-          readonly="true" /]
-      [/PML:col]
-    [/PML:row]
-
-    [PML:interactions]
-      [PML:acceptation id="submit"
-        when="fecha,empleado,horario_inicio,horario_fin,folio" /]
-      [PML:acceptation id="horas_trabajadas"
-        when="horario_inicio,horario_fin" /]
-      [PML:acceptation id="cliente" when="folio" /]
-      [PML:acceptation id="numero_de_parte" when="folio" /]
-      [PML:visibility id="horas_trabajadas"
-        showWhen="horario_inicio,horario_fin" /]
-      [PML:visibility id="cliente" showWhen="folio" /]
-      [PML:visibility id="numero_de_parte" showWhen="folio" /]
-    [/PML:interactions]
-
-    [PML:button id="submit" subtype="submit"
-      label="Guardar Bitácora"
-      style="primary"
-      confirmTitle="Confirmar guardado"
-      confirmMessage="¿Estás seguro de que deseas guardar esta bitácora de nómina?"
-      confirmLabel="Sí, guardar"
-      cancelLabel="Cancelar" /]
-
-  [/PML:body]
-
-[/PML:form]
-```
-
-**Comparación de tamaño:**
-
-```
-JSON original:     ~8,500 caracteres
-PML equivalente:   ~3,200 caracteres
-
-Reducción: ~62% menos tokens
-```
-
----
-
 ## 6. Modelo de interacción
 
 ### 6.1 Formatos de interacción
 
-| Formato                                            | Cuándo se usa                                          |
-| -------------------------------------------------- | ------------------------------------------------------ |
-| `[[INTERACTION]] id=X value=Y`                     | Botón, choice, toggle, confirmación, URL, tab, section |
-| `[[FORM_SUBMIT]] id=X&campo1=valor1&campo2=valor2` | Envío de formulario                                    |
-| `[[CHANGE]] id=X value=Y`                          | Cambio en tiempo real (solo si `live="true"`)          |
-
-> No existe un formato separado para confirmaciones. Las confirmaciones aceptadas o rechazadas se envían como `[[INTERACTION]]` con `value=confirmed` o `value=cancelled`.
+| Formato                        | Cuándo se usa                                          |
+| ------------------------------ | ------------------------------------------------------ |
+| `[[INTERACTION]] id=X value=Y` | Botón, choice, toggle, confirmación, URL, tab, section |
 
 ### 6.2 Flujo completo
 
@@ -1312,7 +617,6 @@ Reducción: ~62% menos tokens
 │  AGENTE  │                     │ CHAT APP │
 │          │ ←─────────────────  │(renderer)│
 └──────────┘   [[INTERACTION]]  └──────────┘
-               [[FORM_SUBMIT]]
 ```
 
 ```
@@ -1372,39 +676,6 @@ AGENTE: Nike Air Max, talla 42. Para completar tu compra
 
 USUARIO: [[INTERACTION]] id=start-checkout value=start
 
-AGENTE: [PML:form id="checkout" mode="stepped"
-          submitLabel="Confirmar compra" showSummary="true"]
-
-          [PML:header]
-            [PML:text type="title" style="bold"]Datos de envío[/PML:text]
-          [/PML:header]
-
-          [PML:body]
-            [PML:input id="nombre" type="text" label="Nombre completo"
-              required="true" errorMessage="El nombre es obligatorio" /]
-            [PML:input id="direccion" type="text" label="Dirección"
-              required="true" errorMessage="La dirección es obligatoria" /]
-            [PML:input id="ciudad" type="text" label="Ciudad"
-              required="true" /]
-            [PML:input id="cp" type="text" label="Código postal"
-              validate="exactLength:5" required="true"
-              errorMessage="El CP debe tener 5 dígitos" /]
-            [PML:input id="telefono" type="tel" label="Teléfono"
-              prefix="+52" required="true" /]
-
-            [PML:button id="submit" subtype="submit"
-              label="Confirmar compra" style="primary"
-              confirmTitle="Confirmar compra"
-              confirmMessage="¿Confirmas tu compra de Nike Air Max 90, talla 42?"
-              confirmLabel="Sí, comprar" cancelLabel="Revisar datos" /]
-          [/PML:body]
-
-        [/PML:form]
-
---- El usuario completa paso a paso y envía ---
-
-USUARIO: [[FORM_SUBMIT]] id=checkout&nombre=Pedro+García&direccion=Reforma+123&ciudad=CDMX&cp=06600&telefono=5551234567
-
 AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 
         [PML:facts columns="2"]
@@ -1434,26 +705,15 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 ┌──────────────────┬─────────────────────────────────────────────────┐
 │ Contenedor        │ Puede contener                                   │
 ├──────────────────┼─────────────────────────────────────────────────┤
-│ (raíz del mensaje)│ Todos los componentes standalone + Form          │
+│ (raíz del mensaje)│ Todos los componentes standalone          │
 │ buttons           │ button (máx 5)                                   │
 │ choice            │ opt (uno o más)                                  │
-│ form > header     │ text, markdown, image, url, badge                │
-│ form > body       │ source, input, toggle, choice, facts, divider,   │
-│                   │ row, interactions, button (submit)               │
-│ form > body > row │ col                                              │
-│ form > body > col │ input, toggle, choice, facts, divider            │
-│ form > footer     │ text, markdown, url                              │
 └──────────────────┴─────────────────────────────────────────────────┘
 ```
 
 ### 7.2 Reglas de anidación
 
-1. **Profundidad máxima fuera de Form:** 2 niveles (buttons > button)
-2. **Profundidad máxima dentro de Form:** 4 niveles (form > body > row > col > input)
-3. **Prohibiciones:**
-    - `form` dentro de `form`
-    - `form` dentro de `buttons`
-    - `row` fuera de `form`
+1. **Profundidad máxima** 2 niveles (buttons > button)
 
 ### 7.3 Reglas de IDs
 
@@ -1471,52 +731,7 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 1. **Siempre** incluir `id` en todo componente interactivo
 2. **Nunca** usar JSON, `< >` ni HTML para componentes
 3. Máximo **5 botones** por `[PML:buttons]`
-4. Para formularios con 3+ campos, usar `[PML:form]`
-5. Usar `style="primary"` solo para la acción principal
-6. **Antes** de mostrar un formulario, preparar al usuario con un botón de activación
-7. Dentro de un Form, usar `[PML:interactions]` para declarar dependencias entre campos
-8. No anidar más de 4 niveles dentro de Form
-
-### 8.2 Selección de modo de Form
-
-```
-¿Cuántos campos?
-  │
-  ├── 1-2 campos simples ──→ mode="inline"
-  │
-  ├── 3-5 campos ──────────→ mode="stepped"
-  │
-  └── 5+ campos o complejo ─→ mode="modal"
-```
-
-### 8.3 Cuándo usar cada tipo de campo
-
-```
-¿El usuario escribe libremente?
-  └── Sí → text, number, email, tel, textarea
-
-¿El usuario selecciona de una lista fija?
-  └── Sí → choice (buttons/dropdown/radio)
-
-¿El usuario busca en datos externos?
-  └── Sí → type="reference" + source
-
-¿Un campo depende de otro?
-  └── Llenado automático → type="auto_populate" + trigger
-  └── Cálculo → type="calculated" + formula + triggerFields
-
-¿El usuario activa/desactiva?
-  └── toggle
-
-¿El usuario sube un archivo?
-  └── type="file"
-
-¿El usuario comparte ubicación?
-  └── type="location"
-
-¿El usuario elige fecha/hora?
-  └── type="date" / type="time"
-```
+4. Usar `style="primary"` solo para la acción principal
 
 ### 8.4 Generación tolerante a errores
 
@@ -1528,7 +743,7 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 | Más de 5 botones             | Renderizar 5, ignorar resto         |
 | Componente hijo no permitido | Renderizar como texto plano         |
 | ID duplicado                 | Renderizar el primero               |
-| Profundidad > 4              | Aplanar al nivel 4                  |
+| Profundidad > 2              | Aplanar al nivel 2                  |
 
 ---
 
@@ -1543,20 +758,10 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
    Toda interacción afecta el historial compartido.
 
 2. EL CHAT INPUT ES SAGRADO
-   Solo desaparece cuando un Form está activo.
+   Solo desaparece cuando no hay un input activo.
    Se restaura inmediatamente después del envío o cancelación.
 
-3. NUNCA SORPRENDER
-   El agente siempre prepara al usuario antes de mostrar un Form.
-   El usuario elige cuándo activarlo.
-
-4. UNA COSA A LA VEZ
-   En móvil, mode="stepped" es la mejor experiencia para 3+ campos.
-
-5. CANCELAR SIEMPRE ES POSIBLE
-   ✕ arriba, swipe down, o botón "Volver al chat".
-
-6. NADA SE PIERDE
+3. NADA SE PIERDE
    Los datos enviados quedan como resumen inline en el historial.
 ```
 
@@ -1566,18 +771,21 @@ Esta subsección define el **modelo canónico** que la ChatApp usa para renderiz
 
 #### 9.1.1.1 Modelo del mensaje
 
-Un mensaje PML del agente se descompone en dos clases de contenido:
+El mensaje PML se descompone en dos clases de contenido:
 
 ```
 mensaje PML = narrativa + tarea
 
-  narrativa  → texto, markdown, imágenes, facts, dividers, dtable, url
+  narrativa  → text, markdown, image, media, facts, dividers, dtable, url
                (contenido pasivo; no requiere acción del usuario)
 
-  tarea      → un único componente interactivo del mensaje
-               (input, choice, toggle, button[s], confirm, form)
-               tarea = task_narrative + task_controls
+  tarea      → único componente interactivo del mensaje
+               (input, choice, toggle, button[s], confirm)
+
+tarea = task_narrative + task_controls
 ```
+
+**Una tarea PML** es un componente Call To Action (CTA) que requiere una acción del usuario para completarse. No un componente de salida de información.
 
 **Invariante:** un mensaje contiene **0 o 1 tarea**, y **N piezas de narrativa**. Esta es la traducción operativa de la regla "un único punto de captura por turno": el renderer nunca tiene que resolver conflictos entre dos componentes interactivos compitiendo por la atención del usuario.
 
@@ -1585,11 +793,11 @@ mensaje PML = narrativa + tarea
 
 El renderer divide la superficie del chat en tres zonas con propiedades distintas:
 
-| Zona              | Visibilidad          | Persistencia         | Interactiva | Contenido                                                       |
-| ----------------- | -------------------- | -------------------- | ----------- | --------------------------------------------------------------- |
-| `shared_history`  | Todos los participantes | Permanente, inmutable | No          | Mensajes pasados, narrativa, snapshots de tareas resueltas       |
-| `task_narrative`  | Privada al disparador | Efímera              | No          | Narrativa que enmarca la tarea en curso (texto, imagen, contexto) |
-| `task_controls`   | Privada al disparador | Efímera              | Sí          | El componente interactivo vivo de la tarea (único por turno)    |
+| Zona             | Visibilidad             | Persistencia          | Interactiva | Contenido                                                         |
+| ---------------- | ----------------------- | --------------------- | ----------- | ----------------------------------------------------------------- |
+| `shared_history` | Todos los participantes | Permanente, inmutable | No          | Mensajes pasados, narrativa, snapshots de tareas resueltas        |
+| `task_narrative` | Privada al disparador   | Efímera               | No          | Narrativa que enmarca la tarea en curso (texto, imagen, contexto) |
+| `task_controls`  | Privada al disparador   | Efímera               | Sí          | El componente interactivo vivo de la tarea (único por turno)      |
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -1625,11 +833,11 @@ El renderer divide la superficie del chat en tres zonas con propiedades distinta
 
 Toda tarea PML atraviesa el mismo lifecycle de renderización. Los nombres son canónicos:
 
-| Fase                | Quién la dispara             | Qué ocurre                                                                                              |
-| ------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `first_rendering`   | El agente (emite el mensaje) | El mensaje llega. Narrativa pinta en `task_narrative`. Controles pintan en `task_controls`. Privado al disparador. |
-| `live_capture`      | El usuario disparador        | El usuario interactúa con los controles. Feedback visual en `task_controls`. Sigue privado.              |
-| `final_rendering`   | La ChatApp                   | La tarea cierra. Snapshot inmutable de narrativa + tarea resuelta se promueve a `shared_history`. `task_narrative` y `task_controls` se vacían. |
+| Fase              | Quién la dispara             | Qué ocurre                                                                                                                                      |
+| ----------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `first_rendering` | El agente (emite el mensaje) | El mensaje llega. Narrativa pinta en `task_narrative`. Controles pintan en `task_controls`. Privado al disparador.                              |
+| `live_capture`    | El usuario disparador        | El usuario interactúa con los controles. Feedback visual en `task_controls`. Sigue privado.                                                     |
+| `final_rendering` | La ChatApp                   | La tarea cierra. Snapshot inmutable de narrativa + tarea resuelta se promueve a `shared_history`. `task_narrative` y `task_controls` se vacían. |
 
 ```
    first_rendering        live_capture          final_rendering
@@ -1675,8 +883,8 @@ Esto implica que un mismo bloque PML puede renderizarse simultáneamente como "t
 
 Los diagramas por componente (§9.5–§9.18) usan el modelo canónico definido en §9.1.1:
 
-- **Componentes pasivos** (sin tarea: `text`, `markdown`, `image`, `media`, `facts`, `divider`, `dtable`) se renderizan **directo en `shared_history`**. Un único diagrama; no atraviesan `task_narrative` ni `task_controls`.
-- **Componentes interactivos** (con tarea: `button`, `buttons`, `url`, `input`, `toggle`, `choice`, `confirm`) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. Se diagraman tres bloques, uno por fase, mostrando las tres zonas separadas con líneas horizontales.
+- **Componentes pasivos** (sin tarea: `text`, `markdown`, `image`, `media`, `facts`, `divider`, `dtable`,`url`) se renderizan **directo en `shared_history`**. Un único diagrama; no atraviesan `task_narrative` ni `task_controls`.
+- **Componentes interactivos** (con tarea: `button`, `buttons`, `input`, `toggle`, `choice`, `confirm`) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. Se diagraman tres bloques, uno por fase, mostrando las tres zonas separadas con líneas horizontales.
 
 **Convención visual de las zonas en los diagramas:**
 
@@ -1699,42 +907,29 @@ La línea horizontal `├──┤` separa las tres zonas. En `final_rendering`,
 
 La fase `live_capture` se manifiesta visualmente distinto según el componente. Cuando un diagrama quiera enfatizar qué clase de actividad ocurre, puede etiquetarla así:
 
-| Componente             | Manifestación de `live_capture`                                  |
-| ---------------------- | ----------------------------------------------------------------- |
-| `button`, `buttons`    | Tap directo; resolución inmediata, casi sin permanencia en la fase |
-| `url`                  | Tap abre destino externo; la app preserva estado para volver       |
-| `input`                | Teclado/selector/GPS/archivo abierto, captura en curso             |
-| `toggle`               | Fila táctil, cambio de estado binario                              |
-| `choice`               | Selección de una o varias opciones                                 |
-| `confirm`              | Diálogo modal explícito; el chat input queda pausado mientras dura |
+| Componente          | Manifestación de `live_capture`                                    |
+| ------------------- | ------------------------------------------------------------------ |
+| `button`, `buttons` | Tap directo; resolución inmediata, casi sin permanencia en la fase |
+| `url`               | Tap abre destino externo; la app preserva estado para volver       |
+| `input`             | Teclado/selector/GPS/archivo abierto, captura en curso             |
+| `toggle`            | Fila táctil, cambio de estado binario                              |
+| `choice`            | Selección de una o varias opciones                                 |
+| `confirm`           | Diálogo modal explícito; el chat input queda pausado mientras dura |
 
 **Lo que pierde el chat input durante `live_capture`:**
 
-El chat input persistente (composer global de la ChatApp) sigue activo durante `live_capture` excepto cuando la tarea exige interacción exclusiva: `confirm` modal, `input type="file"` con selector abierto, o un `form` activo. En esos casos, el chat input se restaura tras `final_rendering`.
+El chat input persistente (composer global de la ChatApp) sigue activo durante `live_capture` excepto cuando la tarea exige interacción exclusiva: `confirm` modal, `input type="file"` con selector abierto. En esos casos, el chat input se restaura tras `final_rendering`.
 
 **Multiusuario:**
 
 Las zonas `task_narrative` y `task_controls` que aparecen en los diagramas son **privadas al disparador**. Los demás participantes ven `shared_history` igual, pero las dos zonas inferiores pueden mostrar un placeholder (_"Pedro está respondiendo…"_) o quedar ocultas, según la política del runner. La asignación de quién es el disparador no se expresa en PML — viene del envelope del turno (ver §9.1.1.6).
 
-### 9.3 Flujo de Form en chat
-
-> **TODO — pendiente de redacción bajo el modelo canónico.**
->
-> El flujo de Form se documentará más adelante. Decisiones pendientes:
->
-> - Si Form **expande** `task_controls` a pantalla completa (sheet/modal) manteniendo las tres zonas conceptualmente, o si introduce una **cuarta zona** (`task_canvas` / `task_fullscreen`) que sustituye temporalmente a `task_narrative` + `task_controls`.
-> - Cómo se materializa el snapshot en `shared_history` tras el envío del Form (resumen inline, lista de campos, badge de "enviado").
-> - Cómo se comporta el chat input persistente durante `live_capture` de un Form modal (se oculta, se mantiene como escape, etc.).
-> - Cómo aplica el lifecycle a Forms `mode="stepped"` con múltiples pasos: ¿cada paso es un `live_capture` distinto o todo el Form vive en un único `live_capture` extendido?
-
 ### 9.4 Gestos soportados
 
-| Gesto                    | Acción                    |
-| ------------------------ | ------------------------- |
-| Tap en botón/opción      | Seleccionar / activar     |
-| Swipe down en form modal | Cerrar (con confirmación) |
-| Tap en ✕                 | Cerrar / cancelar         |
-| Mantener presionado      | Mostrar tooltip           |
+| Gesto               | Acción                |
+| ------------------- | --------------------- |
+| Tap en botón/opción | Seleccionar / activar |
+| Mantener presionado | Mostrar tooltip       |
 
 ### 9.5 Text
 
@@ -1765,7 +960,7 @@ render directo a shared_history
 Componente **pasivo** (narrativa). Render directo a `shared_history`.
 
 - Usar Markdown cuando el contenido necesite estructura real: pasos, listas, citas, enlaces o énfasis.
-- Evitar tablas Markdown anchas en móvil; preferir `facts` o `dtable` según el caso.
+- Nunca usar tablas Markdown; preferir `facts` o `dtable` según el caso.
 - Los encabezados dentro de Markdown no deben competir visualmente con el mensaje principal del agente.
 - Mantener bloques de código y citas suficientemente cortos para no forzar scroll horizontal.
 
@@ -1787,7 +982,7 @@ render directo a shared_history
 
 ### 9.7 URL
 
-Componente **interactivo** (tarea). Lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`. `live_capture` se manifiesta como tap que abre destino externo (navegador, descarga, copia).
+Componente **pasivo**. Render directo a `shared_history`.
 
 - El `label` debe describir la acción o destino, no mostrar la URL completa.
 - Usar `icon="external"` para abrir fuera del chat, `download` para archivos y `copy` para copiar contenido.
@@ -1795,46 +990,14 @@ Componente **interactivo** (tarea). Lifecycle completo: `first_rendering` → `l
 - Si el enlace abre contenido externo, el renderer debe preservar el estado del chat al volver.
 
 ```
-first_rendering (privado al disparador)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-├─────────────────────────┤
-│ task_narrative          │
-│   Tu factura está lista.│
-├─────────────────────────┤
-│ task_controls           │
-│  ┌───────────────────┐  │
-│  │ Descargar factura │  │ ← URL viva
-│  └───────────────────┘  │
-└─────────────────────────┘
-
-live_capture (tap abre destino externo)
-┌─────────────────────────┐
-│ shared_history          │
-│   ...                   │
-├─────────────────────────┤
-│ task_narrative          │
-│   Tu factura está lista.│
-├─────────────────────────┤
-│ task_controls           │
-│  ┌───────────────────┐  │
-│  │ Descargar... ⏳   │  │ ← abriendo
-│  └───────────────────┘  │
-└─────────────────────────┘
-
-final_rendering (snapshot compartido)
+render directo a shared_history
 ┌─────────────────────────┐
 │ shared_history          │
 │   ...                   │
 │   Tu factura está lista.│
-│   Usuario abrió factura │ ← snapshot
-│   Agente: La mantengo   │
-│   disponible aquí.      │
-├─────────────────────────┤
-│ task_narrative   (vacío)│
-├─────────────────────────┤
-│ task_controls    (vacío)│
+│   ┌───────────────────┐ │
+│   │ Descargar factura │ │ ← URL viva
+│   └───────────────────┘ │
 └─────────────────────────┘
 ```
 
@@ -1875,7 +1038,7 @@ live_capture (tap; instantáneo)
 ├─────────────────────────┤
 │ task_controls           │
 │  ┌───────────────────┐  │
-│  │ ⏳ Procesando...  │  │ ← loading
+│  │ ⏳ Procesando...  │  │ ← tap (instantaneous)
 │  └───────────────────┘  │
 └─────────────────────────┘
 
@@ -2029,6 +1192,9 @@ first_rendering (privado al disparador)
 │  ┌───────────────────┐  │
 │  │                   │  │ ← campo vacío
 │  └───────────────────┘  │
+│                   ┌───┐ │
+│                   │ > │ │ Botón enviar (deshabilitado)
+│                   └───┘ │
 └─────────────────────────┘
 
 live_capture (teclado activo)
@@ -2043,10 +1209,25 @@ live_capture (teclado activo)
 │ task_controls           │
 │   Email                 │
 │  ┌───────────────────┐  │
-│  │ pedro@email.com▏ │  │ ← cursor + teclado
+│  │                   │  │ ← campo vacío
 │  └───────────────────┘  │
+│                   ┌───┐ │
+│                   │ > │ │ Botón enviar  (deshabilitado)
+│                   └───┘ │
 │   Usa un correo válido  │ ← help inline
 └─────────────────────────┘
+Cuando el usuario escribe en el campo, el componente debe actualizar el valor del campo y mostrar el valor en el campo con el cursor en la posición actual. Además debe habilitar el botón de enviar. Si el valor del campo es inválido, el componente debe mostrar un mensaje de error inline y deshabilitar el botón de enviar.
+
+┌─────────────────────────┐
+│  ┌───────────────────┐  │
+│  │ pedro@email.com▏ │  │ ← cursor + teclado
+│  └───────────────────┘  │
+│                   ┌───┐ │
+│                   │ > │ │ Botón enviar (habilitado)
+│                   └───┘ │
+└─────────────────────────┘
+
+
 
 final_rendering (snapshot compartido)
 ┌─────────────────────────┐
@@ -2186,7 +1367,7 @@ Componente **pasivo** (narrativa). Render directo a `shared_history`.
 - Usar `facts` para resúmenes, confirmaciones y datos de solo lectura.
 - En móvil, preferir `columns="1"` salvo que las claves y valores sean muy cortos.
 - Mantener claves consistentes y breves.
-- No usar `facts` para datos editables; usar `input`, `choice` o `form`.
+- No usar `facts` para datos editables; usar `input` o `choice`.
 
 ```
 render directo a shared_history
@@ -2329,26 +1510,22 @@ final_rendering (snapshot compartido, chat input restaurado)
 | Valor inválido         | Media     | Usar default                        |
 | Hijo no permitido      | Media     | Renderizar como texto               |
 | Más de 5 botones       | Media     | Renderizar 5                        |
-| Profundidad > 4        | Media     | Aplanar                             |
+| Profundidad > 3        | Media     | Aplanar                             |
 | PML ilegible           | Alta      | Renderizar como texto plano         |
 
 ### 10.2 Errores de recursos
 
-| Error                   | Acción                                |
-| ----------------------- | ------------------------------------- |
-| Imagen no carga         | Mostrar `alt` + placeholder           |
-| Media no carga          | Mensaje + botón reintentar            |
-| Data source no responde | Mostrar "Sin resultados" en reference |
-| Form timeout            | "Conexión perdida" + reintentar       |
+| Error           | Acción                      |
+| --------------- | --------------------------- |
+| Imagen no carga | Mostrar `alt` + placeholder |
+| Media no carga  | Mensaje + botón reintentar  |
 
 ### 10.3 Errores de validación (usuario)
 
-| Error                     | Acción                                 |
-| ------------------------- | -------------------------------------- |
-| Campo requerido vacío     | Borde rojo + `errorMessage`            |
-| Validación falla          | Borde rojo + mensaje                   |
-| Form incompleto (stepped) | No avanzar, error en paso actual       |
-| after falla (time)        | Borde rojo + "Debe ser posterior a..." |
+| Error                 | Acción                      |
+| --------------------- | --------------------------- |
+| Campo requerido vacío | Borde rojo + `errorMessage` |
+| Validación falla      | Borde rojo + mensaje        |
 
 ---
 
@@ -2357,13 +1534,9 @@ final_rendering (snapshot compartido, chat input restaurado)
 ### 11.1 Versionado
 
 ```
-PML v1.0 — Abril 2026
-  - 15 componentes standalone
-  - Form con lógica declarativa
-  - Data sources, auto-populate, calculated fields
+PML v1.1 — Mayo 2026
+  - 14 componentes standalone
   - Layout responsivo
-  - Components interactions (acceptation + visibility)
-  - 3 modos de presentación (inline, stepped, modal)
 ```
 
 ### 11.2 Proceso de extensión
@@ -2372,28 +1545,11 @@ PML v1.0 — Abril 2026
 2. Cambios de sintaxis solo en major (v2.0)
 3. Renderers deben ignorar componentes desconocidos y renderizar como texto
 
-### 11.3 Capacidades del renderer
+### 11.3 Candidatos para v1.2
 
-```
-[[SYSTEM]] capability=pml_version
-```
-
-Respuesta:
-
-```
-[[SYSTEM_RESPONSE]] pml_version=1.1&components=text,markdown,url,button,buttons,image,media,input,toggle,choice,opt,facts,divider,table,confirm,form
-```
-
-### 11.4 Candidatos para v1.1
-
-| Componente     | Descripción                     | Prioridad |
-| -------------- | ------------------------------- | --------- |
-| `calendar`     | Selector de fecha visual (mes)  | Alta      |
-| `map`          | Mapa con marcadores             | Alta      |
-| `stepper`      | Indicador de pasos (1 de 5)     | Media     |
-| `chart`        | Gráfica simple (bar, line, pie) | Media     |
-| `notification` | Banner inline                   | Baja      |
-| `avatar`       | Imagen de perfil circular       | Baja      |
+| Componente | Descripción | Prioridad |
+| ---------- | ----------- | --------- |
+| `form`     | Formulario  | Alta      |
 
 ---
 
@@ -2416,19 +1572,8 @@ Respuesta:
 │ opt             │ Choice only│ Opción individual de un choice        │
 │ facts           │ Ambos     │ Tabla clave-valor                      │
 │ divider         │ Ambos     │ Separador horizontal                   │
-│ table           │ Standalone│ Tabla de datos                         │
+│ dtabl           │ Standalone│ Tabla de datos                         │
 │ confirm         │ Standalone│ Diálogo de confirmación                │
-│ form            │ Contenedor│ Formulario con lógica declarativa      │
-├────────────────┼───────────┼────────────────────────────────────────┤
-│ source          │ Form only │ Definición de data source              │
-│ header          │ Form only │ Cabecera del formulario                │
-│ body            │ Form only │ Cuerpo del formulario                  │
-│ row             │ Form only │ Fila de layout                         │
-│ col             │ Form only │ Columna responsiva                     │
-│ interactions    │ Form only │ Contenedor de reglas                   │
-│ acceptation     │ Form only │ Regla de aceptación                    │
-│ visibility      │ Form only │ Regla de visibilidad                   │
-│ footer          │ Form only │ Pie del formulario                     │
 └────────────────┴───────────┴────────────────────────────────────────┘
 ```
 
@@ -2439,25 +1584,11 @@ Respuesta:
 ```ebnf
 message         = { text | markdown | component } ;
 
-component       = self_closing | container | form ;
+component       = self_closing | container ;
 
 self_closing    = "[PML:" TYPE attr_list " /]" ;
 container       = "[PML:" TYPE attr_list "]"
                   { child } "[/PML:" TYPE "]" ;
-
-form            = "[PML:form" attr_list "]"
-                  [ header ]
-                  body
-                  [ footer ]
-                  "[/PML:form]" ;
-
-header          = "[PML:header]" { child } "[/PML:header]" ;
-
-body            = "[PML:body]"
-                  { source | field | row | interactions | submit_button }
-                  "[/PML:body]" ;
-
-source          = "[PML:source" attr_list " /]" ;
 
 field           = "[PML:input" attr_list " /]"
                 | "[PML:toggle" attr_list " /]"
@@ -2469,16 +1600,9 @@ opt             = "[PML:opt" attr_list " /]" ;
 row             = "[PML:row]" { col } "[/PML:row]" ;
 col             = "[PML:col" attr_list "]" field "[/PML:col]" ;
 
-interactions    = "[PML:interactions]"
-                  { acceptation | visibility }
-                  "[/PML:interactions]" ;
 
-acceptation     = "[PML:acceptation" attr_list " /]" ;
-visibility      = "[PML:visibility" attr_list " /]" ;
-
-submit_button   = "[PML:button" attr_list " subtype=\"submit\" /]" ;
-
-footer          = "[PML:footer]" { child } "[/PML:footer]" ;
+focus           = "[PML:focus" attr_list " /]" ;
+snapshot        = "[PML:snapshot" attr_list " /]" ;
 
 child           = text | markdown | self_closing | container ;
 
@@ -2486,9 +1610,9 @@ attr_list       = { ATTR_NAME "=" "\"" ATTR_VALUE "\"" } ;
 
 TYPE            = "text" | "markdown" | "url" | "button" | "buttons"
                 | "image" | "media" | "input" | "toggle" | "choice" | "opt"
-                | "facts" | "divider" | "table" | "confirm" | "form" ;
+                | "facts" | "divider" | "dtable" | "confirm" ;
 ```
 
 ---
 
-_PML v1.1 — PEPPO Platform — Abril 2026_
+_PML v1.1 — PEPPO Platform — Mayo 2026_
