@@ -52,7 +52,9 @@ Mayo 2026
 
 PML es un lenguaje **ligero, legible para LLMs y ultra-eficiente en tokens** diseñado para que los agentes conversacionales rendericen componentes UI interactivos dentro de interfaces de chat.
 
-PML asume que todo chat es **multiusuario**. Una conversación 1:1 también es multiusuario: es un grupo mínimo de dos participantes. Una conversación grupal extiende el mismo modelo a más participantes. Por eso, las interacciones PML no son eventos privados del cliente local; afectan el historial compartido de la conversación.
+PML asume que todo chat es **multiusuario**. Una conversación 1:1 es el caso degenerado: un grupo mínimo de dos participantes; una conversación grupal extiende el mismo modelo a más. Por eso las interacciones PML no son eventos privados del cliente local: afectan el historial compartido de la conversación.
+
+A la vez, PML define la **forma** del render multiusuario pero **no decide la audiencia**: cuántos participantes hay, quién dispara la tarea y quién ve qué lo resuelve el runner del agente vía el envelope del turno, antes de que el PML llegue al renderer. El mismo bloque PML sirve igual a un 1:1 que a un grupo de 50; lo que cambia es el envelope, no el markup.
 
 **Filosofía:**
 
@@ -861,7 +863,7 @@ El chat input persistente (composer global de la ChatApp) sigue activo durante `
 
 **Multiusuario:**
 
-Las zonas `task_narrative` y `task_controls` que aparecen en los diagramas son **privadas al disparador**. Los demás participantes ven `shared_history` igual, pero las dos zonas inferiores pueden mostrar un placeholder (_"Pedro está respondiendo…"_) o quedar ocultas, según la política del runner. La asignación de quién es el disparador no se expresa en PML — viene del envelope del turno (ver §9.1.1.6).
+Las zonas `task_narrative` y `task_controls` que aparecen en los diagramas son **privadas al disparador**. Los demás participantes ven `shared_history` igual, pero las dos zonas inferiores pueden mostrar un placeholder (_"Pedro está respondiendo…"_) o quedar ocultas, según la política del runner. La asignación de quién es el disparador no se expresa en PML — viene del envelope del turno (ver §8.1.1.6).
 
 ### 8.3 Gestos soportados
 
