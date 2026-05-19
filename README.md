@@ -34,6 +34,7 @@ Mayo 2026
   - [5.5 Image](#55-image)
   - [5.6 Media](#56-media)
   - [5.7 Divider](#57-divider)
+  - [5.8 Raw](#58-raw)
 - [6. Componentes PML de Interacción](#6-componentes-pml-de-interacción)
   - [6.1 Input](#61-input)
     - [6.1.1 Input text](#611-input-text)
@@ -53,6 +54,7 @@ Mayo 2026
   - [7.1 Formato de interacción](#71-formato-de-interacción)
   - [7.2 Flujo completo](#72-flujo-completo)
   - [7.3 Ejemplo de conversación completa](#73-ejemplo-de-conversación-completa)
+  - [7.4 Actualización de Estado (State Update)](#74-actualización-de-estado-state-update)
 - [8. Reglas de Composición](#8-reglas-de-composición)
   - [8.1 Tabla de nesting permitido](#81-tabla-de-nesting-permitido)
   - [8.2 Reglas de anidación](#82-reglas-de-anidación)
@@ -279,7 +281,7 @@ Cuando la ChatApp envía un mensaje de interacción al agente, **siempre** aplic
 
 **Se codifica:** texto libre del usuario (input, textarea, etc.)
 
-**No se codifica:** `id`, `value` de botones/choice/toggle, referencias de file, coordenadas de location — todos definidos por el agente o por la ChatApp, sin caracteres especiales.
+**No se codifica:** `id`, `value` de botones/choice/toggle, referencias de file, coordenadas de location — todos definidos por el agente o por la ChatApp, sin caracteres especiales. En el caso de opciones múltiples (`choice` con `multi="true"`), los valores se separan por comas sin espacios (ej. `value=opcion1,opcion2`).
 
 **Nota para el Agente (LLM):** El prompt del sistema del agente debe instruirlo explícitamente para que procese (decodifique) estos valores URL-encoded generados por el usuario.
 
@@ -319,6 +321,7 @@ Los componentes PML pueden agruparse de la siguiente manera:
 - image: Imagen estática.
 - media: Video o audio.
 - divider: Separador.
+- raw: Bloque de texto sin procesar (escape).
 
 **Componentes de interacción / interactivos:**
 
@@ -416,16 +419,16 @@ Tabla de pares clave-valor.
 | --------- | --------- | --------- | --------------------------------- |
 | `columns` | No        | `1` / `2` | Columnas de layout. Default: `1`. |
 
-**Formato del contenido:** Cada entrada va envuelta en `[PML:fact]Clave: valor[/PML:fact]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
+**Formato del contenido:** Cada entrada es un componente autofinalizado `[PML:fact label="Clave" value="valor" /]`.
 
 **Ejemplo:**
 
 ```
 [PML:facts]
-[PML:fact]Producto: Nike Air Max 90[/PML:fact]
-[PML:fact]Talla: 42[/PML:fact]
-[PML:fact]Precio: $2,499 MXN[/PML:fact]
-[PML:fact]Envío: Gratis[/PML:fact]
+  [PML:fact label="Producto" value="Nike Air Max 90" /]
+  [PML:fact label="Talla" value="42" /]
+  [PML:fact label="Precio" value="$2,499 MXN" /]
+  [PML:fact label="Envío" value="Gratis" /]
 [/PML:facts]
 ```
 
@@ -439,16 +442,18 @@ Tabla de datos
 | --------- | --------- | ------ | -------------------------------------- |
 | `columns` | Sí        | string | Nombres de columnas separados por "\|" |
 
-**Formato del contenido:** Cada fila va envuelta en `[PML:dtrow]cel1|cel2|cel3[/PML:dtrow]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
-**Importante:** El carácter `|` (pipe) está estrictamente prohibido dentro del texto de las celdas y nombres de columnas, ya que actúa como delimitador exclusivo.
+**Formato del contenido:** Las columnas en el atributo `columns` se separan por comas. Cada fila va envuelta en `[PML:dtrow]` y contiene componentes autofinalizados `[PML:dtcol value="valor" /]`. Este formato es obligatorio y funciona tanto en una sola línea como en múltiples líneas.
 
 **Ejemplo:**
 
 ```
-[PML:dtable columns="Plan|Precio|Agentes|Mensajes"]
-[PML:dtrow]Básico|$9/mes|1|100/día[/PML:dtrow]
-[PML:dtrow]Pro|$29/mes|10|Ilimitado[/PML:dtrow]
-[PML:dtrow]Enterprise|Custom|Ilimitado|Ilimitado[/PML:dtrow]
+[PML:dtable columns="Plan,Precio,Agentes,Mensajes"]
+  [PML:dtrow]
+    [PML:dtcol value="Básico" /][PML:dtcol value="$9/mes" /][PML:dtcol value="1" /][PML:dtcol value="100/día" /]
+  [/PML:dtrow]
+  [PML:dtrow]
+    [PML:dtcol value="Pro" /][PML:dtcol value="$29/mes" /][PML:dtcol value="10" /][PML:dtcol value="Ilimitado" /]
+  [/PML:dtrow]
 [/PML:dtable]
 ```
 
@@ -507,6 +512,21 @@ Con texto:
 ```
 [PML:divider label="O continúa con" /]
 ```
+
+### 5.8 Raw
+
+Bloque de texto plano que desactiva el parser de PML. Permite incluir sintaxis PML literal sin que sea interpretada como componentes.
+
+**Ejemplo:**
+
+```
+[PML:raw]
+Para mostrar un texto en negritas, utiliza el componente text:
+[PML:text style="bold"]Texto en negritas[/PML:text]
+[/PML:raw]
+```
+
+---
 
 ## 6. Componentes PML de Interacción
 
@@ -834,6 +854,8 @@ Selección entre opciones.
 | `placeholder` | No        | string                           | Texto por defecto (solo dropdown)     |
 | `required`    | No        | `true` / `false`                 | Obligatorio. Default: `false`.        |
 
+Cuando `multi="true"`, la interacción generada separará los valores seleccionados usando comas (`value=opcion1,opcion2`).
+
 #### 6.3.1 Opciones
 
 Las opciones tienen el formato **[PML:opt value="valor" /]** y son hijos directos de la etiqueta `choice`. El `value` es el texto visible para el usuario.
@@ -985,14 +1007,14 @@ USUARIO: [[INTERACTION]] id=start-checkout value=start
 AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 
         [PML:facts columns="2"]
-          Producto: Nike Air Max 90
-          Talla: 42
-          Precio: $2,499 MXN
-          Envío: Gratis
-          Nombre: Pedro García
-          Dirección: Reforma 123, CDMX, 06600
-          Teléfono: +52 555 123 4567
-          Entrega estimada: 3-5 días hábiles
+          [PML:fact label="Producto" value="Nike Air Max 90" /]
+          [PML:fact label="Talla" value="42" /]
+          [PML:fact label="Precio" value="$2,499 MXN" /]
+          [PML:fact label="Envío" value="Gratis" /]
+          [PML:fact label="Nombre" value="Pedro García" /]
+          [PML:fact label="Dirección" value="Reforma 123, CDMX, 06600" /]
+          [PML:fact label="Teléfono" value="+52 555 123 4567" /]
+          [PML:fact label="Entrega estimada" value="3-5 días hábiles" /]
         [/PML:facts]
 
         [PML:choice id="post-compra"]
@@ -1000,6 +1022,12 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
           [PML:opt id="continue" value="Seguir comprando" /]
         [/PML:choice]
 ```
+
+### 7.4 Actualización de Estado (State Update)
+
+Cuando el Agente PML valida una interacción en el backend y determina que es inválida (por ejemplo, un código de descuento incorrecto o un nombre de usuario ya existente), puede emitir un nuevo mensaje conteniendo el **mismo componente interactivo con el mismo `id`** de la interacción inmediata anterior, e incluyendo el atributo `error="Mensaje de error"`.
+
+En este escenario, la ChatApp **no creará** un nuevo bloque de mensaje en el `shared_history`. En su lugar, el renderer identificará que se trata de la misma tarea y la restaurará a la fase `live_capture`, actualizando el componente visual con el mensaje de error. Esta *Actualización de Estado* previene que la conversación se llene de intentos fallidos repetidos, manteniendo el contexto intacto.
 
 ---
 
@@ -1015,12 +1043,13 @@ AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
 │ choice            │ opt (uno o más)                                  │
 │ facts             │ fact (uno o más)                                 │
 │ dtable            │ dtrow (uno o más)                                │
+│ dtrow             │ dtcol (uno o más)                                │
 └──────────────────┴─────────────────────────────────────────────────┘
 ```
 
 ### 8.2 Reglas de anidación
 
-1. **Profundidad máxima** 2 niveles (choice > opt)
+1. **Profundidad máxima** 3 niveles (`dtable` > `dtrow` > `dtcol` y `choice` > `opt`)
 
 ### 8.3 Reglas de IDs
 
@@ -1545,7 +1574,7 @@ Componente **interactivo** (tarea). Lifecycle completo. En `multi="true"`, `live
 - Usar `style="buttons"` para 2-5 opciones cortas.
 - Usar `style="radio"` cuando convenga ver todas las opciones con más texto.
 - Usar `style="dropdown"` cuando haya muchas opciones o el espacio sea limitado.
-- Para `multi="true"`, mostrar claramente las opciones seleccionadas y permitir deseleccionar.
+- Para `multi="true"`, mostrar claramente las opciones seleccionadas y permitir deseleccionar. Las selecciones se enviarán separadas por comas.
 - Evitar opciones con textos demasiado parecidos; el usuario debe poder decidir rápido.
 
 ```
@@ -1690,7 +1719,8 @@ final_rendering (snapshot compartido, chat input restaurado)
 | Error                 | Acción                      |
 | --------------------- | --------------------------- |
 | Campo requerido vacío | Borde rojo + `errorMessage` |
-| Validación falla      | Borde rojo + mensaje        |
+| Validación falla local | Borde rojo + mensaje        |
+| Validación falla servidor | El agente envía Actualización de Estado (sección 7.4) |
 
 ---
 
@@ -1739,10 +1769,14 @@ PML v1.1 — Abril 2026
 │ text            │ Pasivo│ Texto estático con estilo              │
 │ markdown        │ Pasivo│ Texto con formato Markdown             │
 │ facts           │ Pasivo│ Tabla clave-valor                      │
+│ fact            │ Pasivo│ Entrada individual de un facts         │
 │ dtable          │ Pasivo│ Tabla de datos                         │
+│ dtrow           │ Pasivo│ Fila de un dtable                      │
+│ dtcol           │ Pasivo│ Celda de un dtrow                      │
 │ image           │ Pasivo│ Imagen estática                        │
 │ media           │ Pasivo│ Video o audio                          │
 │ divider         │ Pasivo     │ Separador horizontal                   │
+│ raw             │ Pasivo     │ Bloque de texto sin procesar           │
 ├────────────────┼───────────┼────────────────────────────────────────┤
 │ input           │ interactivo│ Campo de entrada para datos             │
 │ toggle          │ interactivo│ Interruptor sí/no                      │
@@ -1763,21 +1797,23 @@ component       = self_closing | container ;
 
 self_closing    = "[PML:" TYPE attr_list " /]" ;
 
-container       = choice_cnt | facts_cnt | dtable_cnt ;
+container       = choice_cnt | facts_cnt | dtable_cnt | raw_cnt ;
 
-(* Contenedores específicos para forzar regla de anidación máxima nivel 2 *)
+(* Contenedores específicos para forzar regla de anidación máxima nivel 3 *)
 choice_cnt      = "[PML:choice" attr_list "]" { opt } "[/PML:choice]" ;
 facts_cnt       = "[PML:facts" attr_list "]" { fact } "[/PML:facts]" ;
 dtable_cnt      = "[PML:dtable" attr_list "]" { dtrow } "[/PML:dtable]" ;
+raw_cnt         = "[PML:raw]" { /./ } "[/PML:raw]" ;
 
 opt             = "[PML:opt" attr_list " /]" ;
-fact            = "[PML:fact]" { text } "[/PML:fact]" ;
-dtrow           = "[PML:dtrow]" { text } "[/PML:dtrow]" ;
+fact            = "[PML:fact" attr_list " /]" ;
+dtrow           = "[PML:dtrow]" { dtcol } "[/PML:dtrow]" ;
+dtcol           = "[PML:dtcol" attr_list " /]" ;
 
 attr_list       = { ATTR_NAME "=" ( "\"" ATTR_VAL_DQ "\"" | "'" ATTR_VAL_SQ "'" ) } ;
 
 TYPE            = "text" | "markdown" | "image" | "media" | "input" | "toggle"
-                | "divider" | "confirm" ;
+                | "divider" | "confirm" | "raw" ;
 
 ATTR_NAME       = /[a-z]+/ ;
 ATTR_VAL_DQ     = /[^"]/ ; (* Cualquier caracter excepto comilla doble *)
