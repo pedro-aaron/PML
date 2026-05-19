@@ -1,8 +1,10 @@
 # PML — PEPPO Markup Language
 
-## Especificación completa v1.4
+## Especificación completa v1.5
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
+
+> **v1.5 (Mayo 2026).** Introduce el componente `form` como contenedor de campos con un único submit que emite una sola `[[INTERACTION]]` multi-campo, materializando el contrato definido en v1.4 §7.3. No hay cambios de sintaxis; cualquier renderer v1.4 que solo entienda `id` + `value` puede ignorar formularios desconocidos y renderizarlos como texto.
 
 ---
 
@@ -36,6 +38,7 @@
     - [6.2 toggle](#62-toggle)
     - [6.3 choice](#63-choice)
     - [6.4 confirm](#64-confirm)
+    - [6.5 form](#65-form)
 - [7. Modelo de interacción](#7-modelo-de-interacción)
     - [7.1 Formato de la interacción](#71-formato-de-la-interacción)
     - [7.2 URL encoding de valores](#72-url-encoding-de-valores)
@@ -51,6 +54,7 @@
 - [Apéndice A — Referencia rápida](#apéndice-a--referencia-rápida)
 - [Apéndice B — EBNF completo](#apéndice-b--ebnf-completo)
 - [Apéndice C — Migración v1.3 → v1.4](#apéndice-c--migración-v13--v14)
+- [Apéndice D — Migración v1.4 → v1.5](#apéndice-d--migración-v14--v15)
 
 ---
 
@@ -230,6 +234,7 @@ Hola Pedro, ¿qué deseas hacer hoy?
 - `toggle` — Interruptor binario
 - `choice` — Selección entre opciones
 - `confirm` — Diálogo de confirmación
+- `form` — Contenedor de campos con submit único (emite una sola `[[INTERACTION]]` multi-campo)
 
 **Componentes auxiliares (solo válidos dentro de su contenedor):**
 
@@ -762,6 +767,201 @@ Diálogo de confirmación. Renderiza un modal con dos acciones: aceptar o cancel
 
 ---
 
+### 6.5 form
+
+Contenedor de campos con **un único submit**. Es el primer componente PML que captura múltiples valores en una sola acción: cuando el usuario presiona el botón submit y la validación local pasa, la ChatApp emite **una sola** `[[INTERACTION]]` cuyos atributos son los `id` de los hijos interactivos con sus valores capturados (formato multi-campo de §7.3).
+
+Es la versión MVP del componente: layout vertical simple, un solo CTA, sin secciones colapsables, sin steps, sin estilos especiales. Componentes adicionales (`stepper`, `form-section`, etc.) quedan para versiones futuras.
+
+#### Atributos
+
+| Atributo       | Requerido | Tipo   | Descripción                                            |
+| -------------- | --------- | ------ | ------------------------------------------------------ |
+| `id`           | Sí        | string | Identificador único del formulario (kebab-case).       |
+| `submit-label` | No        | string | Texto del botón de envío. Default: `"Enviar"`.         |
+
+> v1.5 no define cancel button, estilos, ni callbacks alternos. Si necesitas una acción "Cancelar", emite un `choice` adicional después del form.
+
+#### Hijos permitidos
+
+| Hijo                                                                          | Permitido | Notas                                                                                       |
+| ----------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| Pasivos simples: `text`, `markdown`, `divider`, `image`, `media`, `raw`       | Sí        | Para etiquetas, instrucciones, separadores visuales, secciones narrativas.                  |
+| Pasivo contenedor: `facts`                                                    | Sí        | Útil para mostrar resúmenes readonly antes del submit (`form > facts > fact` = 3 niveles).  |
+| Interactivos: `input` (todos los subtipos), `toggle`, `choice` (single y multi) | Sí      | Cada uno contribuye **un atributo** al `[[INTERACTION]]` final, con su `id` como nombre.    |
+| `dtable`                                                                      | **No**    | Excedería la profundidad máxima de 3 (`form > dtable > dtrow > dtcol` = 4).                |
+| `confirm`                                                                     | **No**    | Confirm es una acción modal autocontenida; mezclarlo con form crea ambigüedad de submit.    |
+| `form` anidado                                                                | **No**    | v1.5 prohíbe forms anidados; el agente debe usar flujos separados.                          |
+
+#### Comportamiento del submit
+
+1. El usuario edita libremente los hijos interactivos del form. **Mientras el form está activo, sus hijos no emiten `[[INTERACTION]]` individuales** — sus valores quedan en estado local de la ChatApp.
+2. El usuario presiona el botón submit (texto: `submit-label`).
+3. La ChatApp ejecuta **validación local** en todos los hijos interactivos:
+   - `required="true"` → el valor no debe estar vacío.
+   - `validate="<regex>"` → el valor debe hacer match (input text).
+   - `min` / `max` → rango numérico (input number, currency).
+   - `min-length` / `max-length` → rango de longitud (input text).
+   - El tipo específico (date, datetime, location, etc.) debe estar bien formado.
+4. **Si alguna validación falla**:
+   - La ChatApp inyecta `error="..."` en cada hijo fallido (usando el `error-message` del componente si está definido, o un default genérico del renderer).
+   - **No** se emite `[[INTERACTION]]`. El form permanece en `live_capture`.
+   - El usuario corrige y vuelve a pulsar submit.
+5. **Si todas las validaciones pasan**:
+   - La ChatApp emite una sola `[[INTERACTION]]` con el `id` del form y un atributo por cada hijo interactivo.
+   - El form transiciona a `final_rendering`.
+
+#### Serialización de la interacción
+
+Para un form con hijos interactivos `child-1`, `child-2`, ..., `child-n` con valores `v1`, `v2`, ..., `vn`:
+
+```
+[[INTERACTION id="form-id" child-1="v1" child-2="v2" ... child-n="vn"]]
+```
+
+**Reglas precisas:**
+
+- **Siempre se incluyen todos** los hijos interactivos del form, incluso si están `disabled`, `readonly`, o el usuario no los tocó (en cuyo caso el valor es la cadena vacía `""` o el `value` inicial declarado por el agente).
+- El **nombre del atributo** es el `id` del hijo. El **valor** es el valor capturado, URL-codificado según §7.2 cuando provenga de texto libre del usuario.
+- Para `choice multi="true"`, los ids seleccionados se serializan **separados por coma** dentro del valor (igual que un choice standalone): `dias="lun,mar,mie"`.
+- Para `toggle`, el valor es `value-on` o `value-off` según corresponda (default `"true"` / `"false"`).
+- El orden de los atributos en la serialización debe respetar el orden de los hijos en el form (recomendación de legibilidad; no es semántico).
+
+#### IDs reservados
+
+Los hijos interactivos de un `form` **no pueden** declarar:
+
+- `id="id"` — colisiona con el `id` del form en el bracket de interacción.
+- `id="value"` — palabra reservada del modo single-value de §7.1 (evita ambigüedad de parsing).
+
+El renderer debe rechazar (renderizar como texto plano) cualquier form con hijos que infrinjan esta regla.
+
+#### Ejemplo: registro de usuario
+
+```
+[PML:form id="registro" submit-label="Crear cuenta"]
+  [PML:text type="header" style="bold"]Crea tu cuenta[/PML:text]
+
+  [PML:input id="nombre" type="text" label="Nombre completo"
+    required="true" /]
+
+  [PML:input id="email" type="text" label="Email"
+    required="true"
+    validate="^[^@]+@[^@]+\.[^@]+$"
+    error-message="Email inválido" /]
+
+  [PML:input id="telefono" type="contact" label="Teléfono" /]
+
+  [PML:input id="fecha-nacimiento" type="date" label="Fecha de nacimiento"
+    required="true" /]
+
+  [PML:choice id="plan" required="true"]
+    [PML:opt id="basico" value="Básico" /]
+    [PML:opt id="pro"    value="Pro"    /]
+  [/PML:choice]
+
+  [PML:toggle id="acepta-terminos"
+    label="Acepto términos y condiciones" required="true" /]
+[/PML:form]
+```
+
+**Submit válido — interacción generada:**
+
+```
+[[INTERACTION id="registro"
+  nombre="Pedro+Garc%C3%ADa"
+  email="pedro%40ejemplo.com"
+  telefono="%2B5215512345678"
+  fecha-nacimiento="1990-03-15"
+  plan="pro"
+  acepta-terminos="true"]]
+```
+
+#### Validación servidor: re-render con errores
+
+Cuando el backend rechaza el submit (p.ej. el email ya está registrado), el agente aplica la regla de actualización de estado de §7.6: re-emite el **mismo form con el mismo `id`**, preserva los valores previos vía el atributo `value` de cada hijo y añade `error="..."` al hijo fallido.
+
+```
+[PML:form id="registro" submit-label="Crear cuenta"]
+  [PML:input id="nombre" type="text" label="Nombre completo"
+    value="Pedro García" required="true" /]
+
+  [PML:input id="email" type="text" label="Email"
+    value="pedro@ejemplo.com"
+    validate="^[^@]+@[^@]+\.[^@]+$"
+    error="Este email ya está registrado" required="true" /]
+
+  [PML:input id="telefono" type="contact" label="Teléfono"
+    value="+52 555 123 4567" /]
+
+  [PML:input id="fecha-nacimiento" type="date" label="Fecha de nacimiento"
+    value="1990-03-15" required="true" /]
+
+  [PML:choice id="plan" required="true" value="pro"]
+    [PML:opt id="basico" value="Básico" /]
+    [PML:opt id="pro"    value="Pro"    /]
+  [/PML:choice]
+
+  [PML:toggle id="acepta-terminos"
+    label="Acepto términos y condiciones" checked="true" required="true" /]
+[/PML:form]
+```
+
+La ChatApp detecta el mismo `id` y restaura la tarea a `live_capture` sin crear un nuevo bloque en `shared_history`.
+
+#### Layout MVP
+
+```
+┌─────────────────────────────┐
+│ task_controls               │
+│  ┌───────────────────────┐  │
+│  │ Crea tu cuenta        │  │ ← text header
+│  │                       │  │
+│  │ Nombre completo       │  │ ← label
+│  │ ┌───────────────────┐ │  │
+│  │ │                   │ │  │ ← input
+│  │ └───────────────────┘ │  │
+│  │                       │  │
+│  │ Email                 │  │
+│  │ ┌───────────────────┐ │  │
+│  │ │ pedro@e.com       │ │  │
+│  │ └───────────────────┘ │  │
+│  │ Email inválido        │  │ ← error inline
+│  │                       │  │
+│  │ Plan                  │  │
+│  │ [Básico] [Pro]        │  │ ← choice
+│  │                       │  │
+│  │ ◉ Acepto términos     │  │ ← toggle
+│  │                       │  │
+│  │ ┌───────────────────┐ │  │
+│  │ │   Crear cuenta    │ │  │ ← submit, full-width
+│  │ └───────────────────┘ │  │
+│  └───────────────────────┘  │
+└─────────────────────────────┘
+```
+
+#### Lifecycle (zonas y fases)
+
+El form es **una sola tarea**. Atraviesa el lifecycle completo igual que cualquier otro componente interactivo:
+
+| Fase              | Qué ocurre                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `first_rendering` | El form completo aparece en `task_controls`. Si el mensaje incluye narrativa **fuera** del form, esa narrativa va a `task_narrative`. Narrativa **dentro** del form se renderiza inline. |
+| `live_capture`    | El usuario edita libremente cualquier hijo interactivo. Los componentes individuales **no emiten** `[[INTERACTION]]`. La validación es inerte hasta el submit.            |
+| `final_rendering` | Tras submit válido, el form completo (con sus valores resueltos) se snapshotea inmutable en `shared_history`. `task_controls` y `task_narrative` se vacían.               |
+
+#### Casos borde
+
+- **Form sin hijos interactivos** (solo narrativa + submit): es válido. La interacción emitida es `[[INTERACTION id="form-id"]]` sin atributos extra. Funciona como un CTA acoplado a narrativa.
+- **Hijo `disabled`**: se incluye en la interacción con su valor actual (el `value` inicial o vacío). El usuario no puede modificarlo, pero el agente recibe el valor para coherencia de campos.
+- **Hijo `readonly`**: igual que disabled en cuanto a serialización; visualmente se muestra editable pero no acepta cambios.
+- **Hijo sin valor inicial y opcional**: se incluye con valor `""` en la serialización.
+- **IDs duplicados entre hijos**: el renderer aplica las reglas de §8.3 (renderiza el primero, ignora los demás; el segundo no contribuye a la interacción).
+- **Hijo prohibido detectado** (ej. `confirm`, `dtable`, `form` anidado): el renderer lo trata como texto plano y lo omite de la interacción. Loggea warning.
+- **Submit con cero hijos interactivos válidos**: la validación pasa trivialmente; se emite `[[INTERACTION id="form-id"]]`.
+
+---
+
 ## 7. Modelo de interacción
 
 Una **interacción** es el resultado serializado de una acción del usuario sobre un componente interactivo. La ChatApp produce la interacción y la envía al Agente PML, que la interpreta y genera la siguiente respuesta.
@@ -821,19 +1021,19 @@ ChatApp envía:    [[INTERACTION id="nombre" value="Pedro+%26+Mar%C3%ADa"]]
 Agente decodifica: "Pedro & María"
 ```
 
-### 7.3 Escalabilidad: interacciones multi-campo
+### 7.3 Interacciones multi-campo
 
-El formato `[[INTERACTION id="..." value="..."]]` se extiende **de forma natural** a componentes futuros que capturen múltiples campos en una sola acción (típicamente, formularios). La regla generativa es:
+El formato `[[INTERACTION id="..." value="..."]]` se extiende **de forma natural** a componentes que capturan múltiples campos en una sola acción. La regla generativa es:
 
 > El bracket `[[INTERACTION ...]]` admite **cualquier número de atributos nombrados** además de `id`. Cada atributo adicional corresponde a un campo del componente compuesto, identificado por el `id` del sub-componente.
 
-**Forma canónica (forma actual, un solo valor):**
+**Forma canónica (un solo valor — input, choice, toggle, confirm):**
 
 ```
 [[INTERACTION id="nombre" value="Pedro"]]
 ```
 
-**Forma multi-campo (preparada para v2 — formularios):**
+**Forma multi-campo (form, §6.5):**
 
 ```
 [[INTERACTION id="form-checkout"
@@ -860,7 +1060,7 @@ El formato `[[INTERACTION id="..." value="..."]]` se extiende **de forma natural
 3. Los valores siguen las mismas reglas de URL encoding de §7.2.
 4. Si un sub-componente devuelve múltiples selecciones (un `choice multi="true"` embebido), su valor se serializa con coma: `dias="lun,mar,mie"`.
 
-> **v1.4 no introduce el componente `form`.** La especificación del componente queda para v2.0. Lo que sí define v1.4 es el **contrato** del formato de interacción: cuando llegue `form`, el contrato ya está fijado y los renderers + agentes existentes lo entenderán sin migración disruptiva.
+> **v1.5 introduce el componente `form` (§6.5)**, primer consumidor del formato multi-campo. v1.4 había fijado el contrato del bracket precisamente para que la llegada de `form` no exigiera ninguna migración disruptiva en agentes o renderers que ya entendieran el formato `id + value`.
 
 ### 7.4 Flujo de conversación
 
@@ -976,21 +1176,24 @@ El renderer actualiza el mismo componente en lugar de agregar uno nuevo.
 
 ### 8.1 Tabla de anidación permitida
 
-| Contenedor         | Puede contener directamente      |
-| ------------------ | -------------------------------- |
-| (raíz del mensaje) | Cualquier componente standalone  |
-| `choice`           | `opt` (uno o más)                |
-| `facts`            | `fact` (uno o más)               |
-| `dtable`           | `dtrow` (uno o más)              |
-| `dtrow`            | `dtcol` (uno o más)              |
-| `raw`              | Texto plano (parser desactivado) |
-| `text`, `markdown` | Texto (sin componentes anidados) |
+| Contenedor         | Puede contener directamente                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| (raíz del mensaje) | Cualquier componente standalone                                                                            |
+| `form`             | Pasivos simples (`text`, `markdown`, `divider`, `image`, `media`, `raw`), `facts`, `input`, `toggle`, `choice` |
+| `choice`           | `opt` (uno o más)                                                                                          |
+| `facts`            | `fact` (uno o más)                                                                                         |
+| `dtable`           | `dtrow` (uno o más)                                                                                        |
+| `dtrow`            | `dtcol` (uno o más)                                                                                        |
+| `raw`              | Texto plano (parser desactivado)                                                                           |
+| `text`, `markdown` | Texto (sin componentes anidados)                                                                           |
 
 ### 8.2 Reglas de anidación
 
-1. **Profundidad máxima: 3 niveles**, dada por las cadenas `dtable > dtrow > dtcol` y `choice > opt`.
-2. Los componentes interactivos **no anidan otros interactivos**.
+1. **Profundidad máxima: 3 niveles**, dada por las cadenas `dtable > dtrow > dtcol`, `choice > opt`, `facts > fact`, `form > choice > opt` y `form > facts > fact`.
+2. Los componentes interactivos **no anidan otros interactivos**, salvo `form`, que es contenedor explícito de interactivos hijos.
 3. Los componentes pasivos no anidan componentes (excepto los pares contenedor/hijo del cuadro de arriba).
+4. `form` **no admite**: `dtable` (excedería profundidad 3), `confirm` (modal incompatible con submit unificado) ni `form` anidado.
+5. Dentro de un `form`, los `id` de los hijos interactivos **no pueden ser `id` ni `value`** (palabras reservadas del bracket `[[INTERACTION]]`).
 
 ### 8.3 Reglas de IDs
 
@@ -1012,6 +1215,8 @@ El renderer actualiza el mismo componente en lugar de agregar uno nuevo.
 5. **Siempre** terminar autofinalizados con ` /]` (con espacio).
 6. **Siempre** cerrar contenedores con `[/PML:tipo]`.
 7. Al recibir `[[INTERACTION ...]]`, decodificar los valores URL-encoded **antes** de razonar sobre ellos.
+8. **En `form`**: dar `id` único a cada hijo interactivo (será el nombre del atributo en la interacción); nunca usar `id="id"` ni `id="value"`; nunca anidar `confirm`, `dtable` ni otro `form`.
+9. **Al re-emitir un `form`** tras error de servidor: usar el mismo `id` del form y poblar `value="..."` en cada hijo con el último valor conocido del usuario; añadir `error="..."` solo en los hijos fallidos (§7.6).
 
 ### 9.2 Generación tolerante a errores
 
@@ -1144,16 +1349,18 @@ Las decisiones de **audiencia** (quién es el disparador, quién ve las zonas pr
 ### 10.3 Aplicación del modelo a los componentes
 
 - **Componentes pasivos** (text, markdown, image, media, facts, divider, dtable, raw) se renderizan **directo en `shared_history`**. No atraviesan `task_narrative` ni `task_controls`.
-- **Componentes interactivos** (input, toggle, choice, confirm) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`.
+- **Componentes interactivos** (input, toggle, choice, confirm, form) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`.
+- En un `form`, el lifecycle se aplica al form como **una unidad**: los hijos no tienen lifecycle propio; viven dentro del `task_controls` del form mientras dura `live_capture`, y el snapshot final incluye al form completo con los valores resueltos.
 
 **Caracterización de `live_capture` por componente:**
 
-| Componente | Manifestación de `live_capture`                                    |
-| ---------- | ------------------------------------------------------------------ |
-| `input`    | Teclado/selector/GPS/picker abierto, captura en curso              |
-| `toggle`   | Fila táctil, cambio de estado binario                              |
-| `choice`   | Selección de una o varias opciones                                 |
-| `confirm`  | Diálogo modal explícito; el chat input queda pausado mientras dura |
+| Componente | Manifestación de `live_capture`                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `input`    | Teclado/selector/GPS/picker abierto, captura en curso                                                        |
+| `toggle`   | Fila táctil, cambio de estado binario                                                                        |
+| `choice`   | Selección de una o varias opciones                                                                           |
+| `confirm`  | Diálogo modal explícito; el chat input queda pausado mientras dura                                           |
+| `form`     | El usuario edita libremente cualquier hijo; ninguno emite `[[INTERACTION]]`. La fase cierra solo con submit. |
 
 ### 10.4 Gestos soportados
 
@@ -1188,23 +1395,27 @@ Resumen práctico; los diagramas extensos por fase quedan fuera del cuerpo princ
 
 **confirm:** `title` que nombre la decisión (no solo "Confirmar"); `message` con la consecuencia en una frase; `style="danger"` solo para acciones destructivas; el botón de cancelar siempre visible y emite `[[INTERACTION ...]]` igual que el de confirmar.
 
+**form:** mantener pocos campos por form (idealmente ≤7); etiquetas claras encima de cada campo; agrupar narrativamente con `text` o `divider`; submit button al final, full-width, con `submit-label` que describa la acción ("Crear cuenta", "Confirmar pedido"); no usar para acciones destructivas (eso es `confirm`); mostrar los errores de validación inline justo bajo cada campo fallido.
+
 ---
 
 ## 11. Manejo de errores
 
 ### 11.1 Errores del agente (PML malformado)
 
-| Error                  | Severidad | Acción del renderer                 |
-| ---------------------- | --------- | ----------------------------------- |
-| Tag de cierre faltante | Alta      | Intentar autocerrar; si no, truncar |
-| ID faltante            | Media     | Generar ID automático               |
-| ID duplicado           | Media     | Renderizar el primero               |
-| Atributo desconocido   | Baja      | Ignorar                             |
-| Atributo en camelCase  | Baja      | Aceptar como alias del kebab-case   |
-| Valor inválido         | Media     | Usar default                        |
-| Hijo no permitido      | Media     | Renderizar como texto               |
-| Profundidad > 3        | Media     | Aplanar al nivel 3                  |
-| PML ilegible           | Alta      | Renderizar como texto plano         |
+| Error                                                  | Severidad | Acción del renderer                                            |
+| ------------------------------------------------------ | --------- | -------------------------------------------------------------- |
+| Tag de cierre faltante                                 | Alta      | Intentar autocerrar; si no, truncar                            |
+| ID faltante                                            | Media     | Generar ID automático                                          |
+| ID duplicado                                           | Media     | Renderizar el primero                                          |
+| Atributo desconocido                                   | Baja      | Ignorar                                                        |
+| Atributo en camelCase                                  | Baja      | Aceptar como alias del kebab-case                              |
+| Valor inválido                                         | Media     | Usar default                                                   |
+| Hijo no permitido                                      | Media     | Renderizar como texto                                          |
+| Profundidad > 3                                        | Media     | Aplanar al nivel 3                                             |
+| PML ilegible                                           | Alta      | Renderizar como texto plano                                    |
+| Hijo prohibido dentro de `form` (`confirm`, `dtable`, `form`) | Media | Omitir del form; no contribuye a `[[INTERACTION]]`; loggear warning |
+| Hijo de `form` con `id="id"` o `id="value"`            | Alta      | Renderizar form como texto plano (id reservado)                |
 
 ### 11.2 Errores de recursos
 
@@ -1216,11 +1427,13 @@ Resumen práctico; los diagramas extensos por fase quedan fuera del cuerpo princ
 
 ### 11.3 Errores de validación (usuario)
 
-| Error                     | Acción                                         |
-| ------------------------- | ---------------------------------------------- |
-| Campo requerido vacío     | Borde rojo + `error-message`                   |
-| Validación falla local    | Borde rojo + mensaje                           |
-| Validación falla servidor | El agente envía actualización de estado (§7.6) |
+| Error                              | Acción                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Campo requerido vacío              | Borde rojo + `error-message`                                                                                        |
+| Validación falla local             | Borde rojo + mensaje                                                                                                |
+| Validación falla servidor          | El agente envía actualización de estado (§7.6)                                                                      |
+| Validación local falla en `form`   | La ChatApp marca cada hijo fallido con `error="..."`, no emite `[[INTERACTION]]`, mantiene el form en `live_capture` |
+| Validación servidor falla en `form` | El agente re-emite el mismo form con valores previos preservados y `error="..."` en el campo fallido (§7.6)        |
 
 ---
 
@@ -1229,7 +1442,16 @@ Resumen práctico; los diagramas extensos por fase quedan fuera del cuerpo princ
 ### 12.1 Versionado
 
 ```
-PML v1.4 — Mayo 2026 (esta especificación)
+PML v1.5 — Mayo 2026 (esta especificación)
+  - Nuevo componente `form` (§6.5): contenedor de campos con submit único
+  - `form` emite una sola [[INTERACTION]] multi-campo (formato definido en v1.4 §7.3)
+  - Validación local del form en submit, server-side via actualización de estado
+  - Reglas explícitas: hijos prohibidos (confirm, dtable, form anidado), ids reservados (id, value)
+  - Sin cambios de sintaxis: parsers v1.4 leen PML v1.5 (form desconocido → texto plano)
+```
+
+```
+PML v1.4 — Mayo 2026
   - Formato [[INTERACTION]] unificado con atributos quoted, preparado para multi-campo
   - Atributos en kebab-case consistente (rename: errorMessage → error-message, etc.)
   - EBNF completo y consistente
@@ -1264,50 +1486,63 @@ PML v1.1 — Abril 2026
 3. Los renderers deben **ignorar componentes desconocidos** o renderizarlos como texto plano.
 4. Los agentes deben **decodificar** atributos en `kebab-case` aunque hayan sido entrenados con `camelCase`.
 
-### 12.3 Candidatos para v2.0
+### 12.3 Candidatos para versiones futuras
 
-| Componente  | Descripción                                                                                                              | Prioridad |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------ | --------- |
-| `form`      | Contenedor de múltiples inputs con submit único. Aprovecha el formato multi-campo de `[[INTERACTION]]` definido en §7.3. | Alta      |
-| `stepper`   | Flujo multi-paso con navegación previa/siguiente.                                                                        | Media     |
-| `signature` | Captura de firma manuscrita.                                                                                             | Baja      |
-| `rating`    | Selector de calificación (estrellas, números).                                                                           | Baja      |
+**v1.6 — extensiones del form** (compatibles, aditivas):
+
+| Extensión                 | Descripción                                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `form-section`            | Sección colapsable dentro de un form, con `label` y estado expanded/collapsed.                                    |
+| `form` con `cancel-label` | Segundo CTA secundario que emite `[[INTERACTION id="form-id" cancelled="true"]]` sin validar.                     |
+| `form` con `disabled`     | Permite deshabilitar el form entero durante envío al backend.                                                    |
+| Validación cruzada        | Atributo `validate-with="other-field-id"` para reglas entre campos (ej. confirmación de contraseña).             |
+
+**v1.7+ — nuevos componentes:**
+
+| Componente  | Descripción                                                              | Prioridad |
+| ----------- | ------------------------------------------------------------------------ | --------- |
+| `stepper`   | Flujo multi-paso con navegación previa/siguiente (forms encadenados).    | Media     |
+| `signature` | Captura de firma manuscrita.                                             | Baja      |
+| `rating`    | Selector de calificación (estrellas, números).                           | Baja      |
+
+**v2.0 — cambios sintácticos** (incompatibles): aún sin candidatos. Cualquier propuesta debe romper parsers existentes para justificar el bump major.
 
 ---
 
 ## Apéndice A — Referencia rápida
 
 ```
-┌────────────────┬─────────────┬─────────────────────────────────────────┐
-│ Componente     │ Tipo        │ Uso principal                            │
-├────────────────┼─────────────┼─────────────────────────────────────────┤
-│ text           │ pasivo      │ Texto estático con estilo                │
-│ markdown       │ pasivo      │ Texto con formato Markdown               │
-│ facts          │ pasivo      │ Tabla clave-valor                        │
-│ fact           │ pasivo·hijo │ Entrada individual de facts              │
-│ dtable         │ pasivo      │ Tabla de datos                           │
-│ dtrow          │ pasivo·hijo │ Fila de un dtable                        │
-│ dtcol          │ pasivo·hijo │ Celda de un dtrow                        │
-│ image          │ pasivo      │ Imagen estática                          │
-│ media          │ pasivo      │ Video o audio                            │
-│ divider        │ pasivo      │ Separador horizontal                     │
-│ raw            │ pasivo      │ Bloque de texto sin procesar             │
-├────────────────┼─────────────┼─────────────────────────────────────────┤
-│ input          │ interactivo │ Campo de entrada (9 subtipos)            │
-│ toggle         │ interactivo │ Interruptor binario                      │
-│ choice         │ interactivo │ Selección entre opciones                 │
-│ opt            │ interactivo·hijo │ Opción individual de un choice       │
-│ confirm        │ interactivo │ Diálogo de confirmación                  │
-└────────────────┴─────────────┴─────────────────────────────────────────┘
+┌────────────────┬──────────────────┬─────────────────────────────────────────┐
+│ Componente     │ Tipo             │ Uso principal                            │
+├────────────────┼──────────────────┼─────────────────────────────────────────┤
+│ text           │ pasivo           │ Texto estático con estilo                │
+│ markdown       │ pasivo           │ Texto con formato Markdown               │
+│ facts          │ pasivo           │ Tabla clave-valor                        │
+│ fact           │ pasivo·hijo      │ Entrada individual de facts              │
+│ dtable         │ pasivo           │ Tabla de datos                           │
+│ dtrow          │ pasivo·hijo      │ Fila de un dtable                        │
+│ dtcol          │ pasivo·hijo      │ Celda de un dtrow                        │
+│ image          │ pasivo           │ Imagen estática                          │
+│ media          │ pasivo           │ Video o audio                            │
+│ divider        │ pasivo           │ Separador horizontal                     │
+│ raw            │ pasivo           │ Bloque de texto sin procesar             │
+├────────────────┼──────────────────┼─────────────────────────────────────────┤
+│ input          │ interactivo      │ Campo de entrada (9 subtipos)            │
+│ toggle         │ interactivo      │ Interruptor binario                      │
+│ choice         │ interactivo      │ Selección entre opciones                 │
+│ opt            │ interactivo·hijo │ Opción individual de un choice           │
+│ confirm        │ interactivo      │ Diálogo de confirmación                  │
+│ form           │ interactivo      │ Contenedor con submit único (multi-campo)│
+└────────────────┴──────────────────┴─────────────────────────────────────────┘
 ```
 
-**Formato de interacción canónico:**
+**Formato de interacción canónico (single-value):**
 
 ```
 [[INTERACTION id="component-id" value="user-value"]]
 ```
 
-**Formato de interacción multi-campo (preparado para v2):**
+**Formato de interacción multi-campo (form):**
 
 ```
 [[INTERACTION id="form-id" campo-a="val-a" campo-b="val-b" ...]]
@@ -1337,7 +1572,8 @@ type             = std_component | aux_component ;
 
 std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "image"    | "media"    | "divider"| "raw"
-                 | "input"    | "toggle"   | "choice" | "confirm" ;
+                 | "input"    | "toggle"   | "choice" | "confirm"
+                 | "form" ;
 
 aux_component    = "opt" | "fact" | "dtrow" | "dtcol" ;
 
@@ -1364,7 +1600,14 @@ WS_eq            = "=" ;
 (*   dtable  → dtrow                                                     *)
 (*   dtrow   → dtcol                                                     *)
 (*   raw     → texto plano (parser desactivado)                          *)
+(*   form    → text | markdown | divider | image | media | raw           *)
+(*             | facts | input | toggle | choice                         *)
+(*             (PROHIBIDO: dtable, confirm, form anidado)                 *)
 (*   resto   → no admite componentes hijos                               *)
+(*                                                                       *)
+(* Profundidad máxima: 3 niveles desde la raíz del mensaje.              *)
+(* Casos al límite: form > choice > opt, form > facts > fact,            *)
+(*                  dtable > dtrow > dtcol, choice > opt, facts > fact.  *)
 ```
 
 ---
@@ -1461,4 +1704,61 @@ Los atributos van **siempre dentro del bracket**, **siempre con comillas dobles*
 
 ---
 
-_PML v1.4 — PEPPO Platform — Mayo 2026_
+## Apéndice D — Migración v1.4 → v1.5
+
+v1.5 es **puramente aditivo**: no hay cambios de sintaxis, no hay renombrado de atributos, no hay rebreaking. Un parser o agente v1.4 puede operar contra mensajes v1.5 con la única salvedad de que renderizará `[PML:form]` como texto plano (componente desconocido). Toda la maquinaria del bracket multi-campo `[[INTERACTION]]` ya existía en v1.4 §7.3.
+
+### D.1 Nuevo componente: `form` (§6.5)
+
+Contenedor de campos con un solo submit. Atributos:
+
+| Atributo       | Requerido | Default     |
+| -------------- | --------- | ----------- |
+| `id`           | Sí        | —           |
+| `submit-label` | No        | `"Enviar"`  |
+
+**Hijos permitidos:** `text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`, `input`, `toggle`, `choice`.
+
+**Hijos prohibidos:** `dtable` (profundidad), `confirm` (modal incompatible), `form` anidado.
+
+### D.2 Activación del formato multi-campo de `[[INTERACTION]]`
+
+v1.4 lo definió como contrato preparatorio. v1.5 lo activa: el form lo emite siempre. La sintaxis es **idéntica** a lo documentado en §7.3 de v1.4.
+
+```
+[[INTERACTION id="form-id" campo-1="val-1" campo-2="val-2" ...]]
+```
+
+### D.3 Reservas en hijos del form
+
+Un hijo del form **no puede** tener `id="id"` ni `id="value"` (colisión semántica con el bracket). El renderer debe rechazar el form completo si se viola.
+
+### D.4 Validación servidor (§7.6)
+
+La actualización de estado se extiende naturalmente al form: el agente re-emite el mismo form con valores previos preservados (`value="..."` en cada hijo) y `error="..."` en el campo fallido. La ChatApp restaura la tarea a `live_capture` sin crear nuevo snapshot.
+
+### D.5 Compatibilidad
+
+| Escenario                                | Comportamiento                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| Renderer v1.4 recibe `[PML:form ...]`    | Componente desconocido → renderiza el contenido como texto plano (regla §9.2).        |
+| Renderer v1.5 recibe PML sin form        | Sin cambios; opera idéntico a v1.4.                                                   |
+| Agente v1.4 recibe `[[INTERACTION id="X" a="1" b="2"]]` | Si el agente entiende el contrato multi-campo de §7.3 (v1.4), lo procesa correctamente. Si no, ignora atributos desconocidos y procesa solo `id`. |
+
+### D.6 Lo que NO está en v1.5
+
+Para mantener el MVP simple, v1.5 **no incluye**:
+
+- Cancel button en form (usar un `choice` adicional).
+- Estilos del form (`style="..."`).
+- Secciones colapsables (`form-section`).
+- Validación cruzada entre campos.
+- Forms anidados o steppers.
+- Submit progresivo / autosave.
+- Forms multi-pantalla.
+
+Todas estas son candidatas a v1.6+ (ver §12.3).
+
+---
+
+_PML v1.5 — PEPPO Platform — Mayo 2026_
