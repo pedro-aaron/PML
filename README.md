@@ -1,30 +1,30 @@
 # PML — PEPPO Markup Language
 
-## Especificación completa v1.5
+## Complete specification v1.6
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
-> **v1.5 (Mayo 2026).** Introduce el componente `form` como contenedor de campos con un único submit que emite una sola `[[INTERACTION]]` multi-campo, materializando el contrato definido en v1.4 §7.3. No hay cambios de sintaxis; cualquier renderer v1.4 que solo entienda `id` + `value` puede ignorar formularios desconocidos y renderizarlos como texto.
+> **v1.6 (May 2026).** Cleans up the serialization of the multi-field bracket introduced in v1.5: a `form`'s fields are now serialized with the `field-*` prefix (`field-name="..."`, `field-email="..."`). This eliminates the artificial rule "do not use `id="id"` or `id="value"` in form children" and makes the boundary between bracket metadata and form fields explicit. The declarative IDs of children remain unrestricted (any valid kebab-case). v1.6 is **additive**: v1.6 renderers accept v1.5 brackets without the prefix during the transition; v1.5 renderers that receive a v1.6 bracket ignore the unknown `field-*` attributes and process only `id`. See Appendix E.
 
 ---
 
-## Índice
+## Table of contents
 
-- [1. Visión general](#1-visión-general)
-    - [1.1 Vocabulario](#11-vocabulario)
-    - [1.2 Interacción entre los componentes](#12-interacción-entre-los-componentes)
-    - [1.3 Principios de diseño](#13-principios-de-diseño)
-- [2. ChatApp PML](#2-chatapp-pml)
-- [3. Agente PML](#3-agente-pml)
-- [4. Sintaxis de PML](#4-sintaxis-de-pml)
-    - [4.1 Formato general](#41-formato-general)
-    - [4.2 Componente autofinalizado](#42-componente-autofinalizado)
-    - [4.3 Componente contenedor](#43-componente-contenedor)
-    - [4.4 Reglas léxicas estrictas](#44-reglas-léxicas-estrictas)
-    - [4.5 Ejemplo de mensaje válido](#45-ejemplo-de-mensaje-válido)
-    - [4.6 Tipos de componentes](#46-tipos-de-componentes)
-    - [4.7 Atributos globales](#47-atributos-globales)
-- [5. Componentes de información](#5-componentes-de-información)
+- [1. Overview](#1-overview)
+    - [1.1 Vocabulary](#11-vocabulary)
+    - [1.2 Interaction between components](#12-interaction-between-components)
+    - [1.3 Design principles](#13-design-principles)
+- [2. PML ChatApp](#2-pml-chatapp)
+- [3. PML Agent](#3-pml-agent)
+- [4. PML syntax](#4-pml-syntax)
+    - [4.1 General format](#41-general-format)
+    - [4.2 Self-closing component](#42-self-closing-component)
+    - [4.3 Container component](#43-container-component)
+    - [4.4 Strict lexical rules](#44-strict-lexical-rules)
+    - [4.5 Example of a valid message](#45-example-of-a-valid-message)
+    - [4.6 Component types](#46-component-types)
+    - [4.7 Global attributes](#47-global-attributes)
+- [5. Information components](#5-information-components)
     - [5.1 text](#51-text)
     - [5.2 markdown](#52-markdown)
     - [5.3 facts](#53-facts)
@@ -33,348 +33,349 @@
     - [5.6 media](#56-media)
     - [5.7 divider](#57-divider)
     - [5.8 raw](#58-raw)
-- [6. Componentes de interacción](#6-componentes-de-interacción)
+- [6. Interaction components](#6-interaction-components)
     - [6.1 input](#61-input)
     - [6.2 toggle](#62-toggle)
     - [6.3 choice](#63-choice)
     - [6.4 confirm](#64-confirm)
     - [6.5 form](#65-form)
-- [7. Modelo de interacción](#7-modelo-de-interacción)
-    - [7.1 Formato de la interacción](#71-formato-de-la-interacción)
-    - [7.2 URL encoding de valores](#72-url-encoding-de-valores)
-    - [7.3 Escalabilidad: interacciones multi-campo](#73-escalabilidad-interacciones-multi-campo)
-    - [7.4 Flujo de conversación](#74-flujo-de-conversación)
-    - [7.5 Ejemplo de conversación completa](#75-ejemplo-de-conversación-completa)
-    - [7.6 Actualización de estado](#76-actualización-de-estado)
-- [8. Reglas de composición](#8-reglas-de-composición)
-- [9. Guías para LLMs / Agentes](#9-guías-para-llms--agentes)
-- [10. Guías de UX para móviles del ChatApp](#10-guías-de-ux-para-móviles-del-chatapp)
-- [11. Manejo de errores](#11-manejo-de-errores)
-- [12. Versionado y extensibilidad](#12-versionado-y-extensibilidad)
-- [Apéndice A — Referencia rápida](#apéndice-a--referencia-rápida)
-- [Apéndice B — EBNF completo](#apéndice-b--ebnf-completo)
-- [Apéndice C — Migración v1.3 → v1.4](#apéndice-c--migración-v13--v14)
-- [Apéndice D — Migración v1.4 → v1.5](#apéndice-d--migración-v14--v15)
+- [7. Interaction model](#7-interaction-model)
+    - [7.1 Interaction format](#71-interaction-format)
+    - [7.2 URL encoding of values](#72-url-encoding-of-values)
+    - [7.3 Scalability: multi-field interactions](#73-scalability-multi-field-interactions)
+    - [7.4 Conversation flow](#74-conversation-flow)
+    - [7.5 Full conversation example](#75-full-conversation-example)
+    - [7.6 State update](#76-state-update)
+- [8. Composition rules](#8-composition-rules)
+- [9. Guidelines for LLMs / Agents](#9-guidelines-for-llms--agents)
+- [10. Mobile UX guidelines for the ChatApp](#10-mobile-ux-guidelines-for-the-chatapp)
+- [11. Error handling](#11-error-handling)
+- [12. Versioning and extensibility](#12-versioning-and-extensibility)
+- [Appendix A — Quick reference](#appendix-a--quick-reference)
+- [Appendix B — Full EBNF](#appendix-b--full-ebnf)
+- [Appendix C — Migration v1.3 → v1.4](#appendix-c--migration-v13--v14)
+- [Appendix D — Migration v1.4 → v1.5](#appendix-d--migration-v14--v15)
+- [Appendix E — Migration v1.5 → v1.6](#appendix-e--migration-v15--v16)
 
 ---
 
-## 1. Visión general
+## 1. Overview
 
-**PML** es un lenguaje ligero, legible para LLMs y eficiente en tokens, diseñado para que los agentes conversacionales rendericen componentes UI interactivos dentro de interfaces de chat.
+**PML** is a lightweight, LLM-readable, token-efficient language designed so conversational agents can render interactive UI components inside chat interfaces.
 
-PML convierte los clásicos ChatBots en **Agentes de Interacción** ricos en funcionalidades: el agente no solo emite texto, también emite componentes que el usuario puede tocar, llenar, confirmar o cancelar.
+PML turns classic ChatBots into **Interaction Agents** rich in functionality: the agent does not only emit text, it also emits components that the user can tap, fill in, confirm or cancel.
 
-### 1.1 Vocabulario
+### 1.1 Vocabulary
 
-| Término         | Definición                                                                                                                                         |
+| Term            | Definition                                                                                                                                         |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PML**         | El lenguaje de marcado descrito en este documento.                                                                                                 |
-| **Componente**  | Una unidad sintáctica de PML, ya sea autofinalizada (`[PML:tipo /]`) o contenedora (`[PML:tipo] ... [/PML:tipo]`).                                 |
-| **Agente PML**  | Un LLM configurado para generar y consumir PML.                                                                                                    |
-| **ChatApp PML** | La interfaz que renderiza el PML y captura interacciones del usuario. Puede ser app móvil, web o escritorio.                                       |
-| **Mensaje**     | Un bloque de texto producido por el agente o por el usuario; puede mezclar libremente texto plano y componentes PML.                               |
-| **Interacción** | El resultado serializado de una acción del usuario sobre un componente interactivo. Se transmite como `[[INTERACTION id="..." value="..."]]`.      |
-| **Tarea**       | Ciclo de vida de una interacción individual: render → captura → cierre. Una conversación contiene cero, una o muchas tareas a lo largo del tiempo. |
+| **PML**         | The markup language described in this document.                                                                                                    |
+| **Component**   | A syntactic unit of PML, either self-closing (`[PML:type /]`) or container (`[PML:type] ... [/PML:type]`).                                         |
+| **PML Agent**   | An LLM configured to produce and consume PML.                                                                                                      |
+| **PML ChatApp** | The interface that renders the PML and captures user interactions. Can be a mobile, web or desktop app.                                            |
+| **Message**     | A text block produced by the agent or by the user; it may freely mix plain text and PML components.                                                |
+| **Interaction** | The serialized result of a user action on an interactive component. It is transmitted as `[[INTERACTION id="..." value="..."]]`.                   |
+| **Task**        | The lifecycle of a single interaction: render → capture → close. A conversation contains zero, one or many tasks over time.                        |
 
-### 1.2 Interacción entre los componentes
+### 1.2 Interaction between components
 
-El usuario inicia una conversación con la ChatApp. La ChatApp envía el mensaje al Agente PML. El Agente PML analiza el mensaje y genera una respuesta en PML. La ChatApp renderiza ese PML. El usuario interactúa con los componentes y la ChatApp captura la interacción, la serializa como `[[INTERACTION]]` y la envía de vuelta al Agente PML. El Agente PML procesa la interacción y genera nuevo PML, repitiendo el ciclo.
+The user starts a conversation with the ChatApp. The ChatApp sends the message to the PML Agent. The PML Agent parses the message and produces a response in PML. The ChatApp renders that PML. The user interacts with the components and the ChatApp captures the interaction, serializes it as `[[INTERACTION]]` and sends it back to the PML Agent. The PML Agent processes the interaction and generates new PML, repeating the cycle.
 
-Caso de uso ilustrativo:
+Illustrative use case:
 
-- Usuario: "Hola!"
-- Agente PML: "Hola! ¿En qué puedo ayudarte?" + botones `Clima`, `Noticias`, `Traductor`, `Cancelar`.
-- Usuario toca `Clima`.
-- Agente PML: "El clima en MiCiudad es de 20 grados." + los mismos botones.
-- Usuario toca `Cancelar`.
-- Agente PML: "Saludos, ¿en qué más puedo ayudarte?"
+- User: "Hi!"
+- PML Agent: "Hi! How can I help you?" + buttons `Weather`, `News`, `Translator`, `Cancel`.
+- User taps `Weather`.
+- PML Agent: "The weather in MyCity is 68°F." + the same buttons.
+- User taps `Cancel`.
+- PML Agent: "Cheers, how else can I help you?"
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'labelBoxBkgColor': 'lightgrey', 'labelBoxBorderColor': '#000000', 'actorBorder': '#D86613', 'actorBkg': '#ffffff', 'activationBorderColor': '#232F3E', 'activationBkgColor': '#D86613', 'noteBkgColor': 'rgba(187, 112, 0, 1)','noteTextColor': '#ffffff', 'noteBorderColor': '#232F3E'}}}%%
 
 sequenceDiagram
-    participant User as Usuario
-    participant ChatApp as ChatApp PML
-    participant Agent as Agente PML
+    participant User as User
+    participant ChatApp as PML ChatApp
+    participant Agent as PML Agent
 
-    ChatApp->>ChatApp: Renderiza mensaje inicial<br />de la spec del Agente
-    note over ChatApp: "Bienvenido, ¿en qué puedo ayudarte?"
-    User->>ChatApp: Envía: "Hola!"
-    ChatApp->>Agent: [[INTERACTION id="user-init" value="Hola!"]]
-    Agent->>Agent: Procesa y genera PML
-    note over Agent: "Hola, ¿en qué puedo ayudarte?<br />[PML:choice id=acciones]...[/PML:choice]"
-    Agent->>ChatApp: Respuesta PML
-    ChatApp->>User: Renderiza texto + botones
-    User->>ChatApp: Toca "Clima"
-    ChatApp->>Agent: [[INTERACTION id="acciones" value="clima"]]
-    Agent->>ChatApp: Nueva respuesta PML
-    ChatApp->>User: Renderiza nuevo mensaje
+    ChatApp->>ChatApp: Renders initial message<br />from the Agent spec
+    note over ChatApp: "Welcome, how can I help you?"
+    User->>ChatApp: Sends: "Hi!"
+    ChatApp->>Agent: [[INTERACTION id="user-init" value="Hi!"]]
+    Agent->>Agent: Processes and generates PML
+    note over Agent: "Hi, how can I help you?<br />[PML:choice id=actions]...[/PML:choice]"
+    Agent->>ChatApp: PML response
+    ChatApp->>User: Renders text + buttons
+    User->>ChatApp: Taps "Weather"
+    ChatApp->>Agent: [[INTERACTION id="actions" value="weather"]]
+    Agent->>ChatApp: New PML response
+    ChatApp->>User: Renders new message
 ```
 
-### 1.3 Principios de diseño
+### 1.3 Design principles
 
 ```
-- Interaction-first   →  El agente genera interacciones con la UI, no solo texto
-- Token-efficient     →  Más compacto que JSON, XML o cualquier alternativa
-- LLM-friendly        →  Sintaxis regular y predecible, fácil de generar sin errores
-- Mobile-native       →  Diseñado para flujos conversacionales en móvil
-- UILogic-first       →  La lógica de la UI vive en el frontend, no en el agente
-- Extensible          →  Nuevos componentes y nuevos campos sin romper compatibilidad
-- No-JSON             →  Bracket syntax homogénea, sin estructuras anidadas tipo objeto
+- Interaction-first   →  The agent generates UI interactions, not only text
+- Token-efficient     →  More compact than JSON, XML, or any alternative
+- LLM-friendly        →  Regular, predictable syntax, easy to emit without errors
+- Mobile-native       →  Designed for mobile conversational flows
+- UILogic-first       →  UI logic lives in the frontend, not in the agent
+- Extensible          →  New components and new fields without breaking compatibility
+- No-JSON             →  Uniform bracket syntax, no nested object-like structures
 ```
 
 ---
 
-## 2. ChatApp PML
+## 2. PML ChatApp
 
-La ChatApp es la interfaz que permite a los usuarios interactuar con los Agentes PML. Es responsable de:
+The ChatApp is the interface that allows users to interact with PML Agents. It is responsible for:
 
-- Renderizar los componentes PML que recibe del agente.
-- Capturar las interacciones del usuario sobre componentes interactivos.
-- Serializar esas interacciones como `[[INTERACTION ...]]` y enviarlas al agente.
-- Procesar las nuevas respuestas y continuar el ciclo.
+- Rendering the PML components received from the agent.
+- Capturing user interactions on interactive components.
+- Serializing those interactions as `[[INTERACTION ...]]` and sending them to the agent.
+- Processing the new responses and continuing the cycle.
 
-**Agnosticidad del motor.** La ChatApp PML es agnóstica al motor del agente: no sabe qué LLM produce el PML, solo sabe que debe renderizarlo. Esto permite implementar ChatApps específicas para Android, iOS, Web, Desktop, etc., cada una con su propio renderizador nativo, sin acoplamiento al backend.
-
----
-
-## 3. Agente PML
-
-Un **Agente PML** es un LLM (Large Language Model) configurado para:
-
-1. Generar respuestas en PML, no solo en texto plano.
-2. Recibir y procesar interacciones (`[[INTERACTION ...]]`) provenientes de la ChatApp.
-3. Decidir cuándo emitir componentes interactivos y cuándo solo narrativa.
-
-**Agnosticidad del LLM.** El Agente PML es agnóstico al motor LLM: puede implementarse con GPT, Claude, Gemini, Llama, etc. Lo único que define a un Agente PML es su capacidad de producir y consumir PML correctamente.
-
-**Prompt base.** El prompt del agente debe incluir, como mínimo:
-
-- Una explicación de la sintaxis de PML (la subsección de la spec aplicable a su dominio).
-- Instrucciones explícitas sobre cómo **decodificar** los valores URL-encoded que llegan en las interacciones del usuario.
-- Ejemplos representativos del dominio del agente.
-
-> No es recomendable incluir la especificación completa de PML en el prompt base; basta con el subconjunto necesario para el dominio del agente. Incluir todo puede degradar la calidad de generación.
+**Engine-agnostic.** The PML ChatApp is agnostic to the agent's engine: it does not know which LLM produces the PML, only that it must render it. This allows for ChatApps tailored to Android, iOS, Web, Desktop, etc., each with its own native renderer, without backend coupling.
 
 ---
 
-## 4. Sintaxis de PML
+## 3. PML Agent
 
-### 4.1 Formato general
+A **PML Agent** is an LLM (Large Language Model) configured to:
 
-PML se escribe como texto plano UTF-8. En un mismo mensaje pueden coexistir libremente texto plano y componentes PML.
+1. Produce responses in PML, not only in plain text.
+2. Receive and process interactions (`[[INTERACTION ...]]`) coming from the ChatApp.
+3. Decide when to emit interactive components and when to emit only narrative.
 
-Todo componente PML tiene una de dos formas:
+**LLM-agnostic.** The PML Agent is agnostic to the LLM engine: it can be implemented with GPT, Claude, Gemini, Llama, etc. The only thing that defines a PML Agent is its ability to produce and consume PML correctly.
 
-- **Autofinalizado:** `[PML:tipo atributo-1="valor-1" atributo-2="valor-2" /]`
-- **Contenedor:** `[PML:tipo atributo="valor"] contenido hijo [/PML:tipo]`
+**Base prompt.** The agent's prompt must include, at minimum:
 
-### 4.2 Componente autofinalizado
+- An explanation of PML syntax (the subsection of the spec applicable to its domain).
+- Explicit instructions on how to **decode** URL-encoded values arriving in user interactions.
+- Representative examples of the agent's domain.
 
-Componentes sin contenido hijo. Terminan obligatoriamente con ` /]` (con espacio antes de `/]`).
+> It is not recommended to include the full PML specification in the base prompt; the subset needed for the agent's domain is enough. Including everything can degrade generation quality.
 
-```
-[PML:tipo atributo-1="valor-1" atributo-2="valor-2" /]
-```
+---
 
-### 4.3 Componente contenedor
+## 4. PML syntax
 
-Componentes con contenido hijo (otros componentes o texto, según las reglas de composición de §8).
+### 4.1 General format
 
-```
-[PML:tipo atributo="valor"]
-  contenido hijo
-[/PML:tipo]
-```
+PML is written as UTF-8 plain text. Plain text and PML components may coexist freely in the same message.
 
-### 4.4 Reglas léxicas estrictas
+Every PML component has one of two forms:
 
-| Regla                 | Detalle                                                                                                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Encoding**          | Todo el contenido es UTF-8.                                                                                                                   |
-| **Case**              | Los nombres de componentes y atributos van en `lowercase` o `kebab-case`. Nunca `camelCase`, nunca `snake_case`, nunca mayúsculas.            |
-| **Atributos**         | Sintaxis: `nombre="valor"`. Los nombres siguen `[a-z][a-z0-9-]*`.                                                                             |
-| **Comillas**          | Los valores se delimitan con `"` (preferido) o `'`. Nunca mezclar el mismo atributo.                                                          |
-| **Comillas anidadas** | Si un valor contiene la misma comilla que lo delimita, usar entidades HTML (`&quot;`, `&#39;`).                                               |
-| **Prohibido**         | No JSON, no `< >`, no caracteres `[` `]` literales fuera de los componentes ni dentro de los valores de atributo.                             |
-| **IDs**               | Todo componente interactivo **debe** declarar `id="..."`. Formato: `kebab-case`, sin espacios ni caracteres especiales, no inicia con dígito. |
-| **Unicidad**          | Los `id` son únicos dentro de un mensaje.                                                                                                     |
-| **Autofinalizado**    | Termina obligatoriamente con un espacio antes del slash: ` /]`.                                                                               |
-| **Cierre**            | Los contenedores se cierran con `[/PML:tipo]`. El nombre del tipo debe coincidir exactamente con el de apertura.                              |
-| **Escapado**          | No existen secuencias de escape con `\`. Use entidades HTML o `[PML:raw]` cuando necesite literales.                                          |
+- **Self-closing:** `[PML:type attr-1="value-1" attr-2="value-2" /]`
+- **Container:** `[PML:type attr="value"] child content [/PML:type]`
 
-> El URL encoding aplica a **valores de interacciones**, no a atributos de componentes PML emitidos por el agente. Ver §7.2.
+### 4.2 Self-closing component
 
-### 4.5 Ejemplo de mensaje válido
+Components with no child content. They must end with ` /]` (a space before `/]`).
 
 ```
-Hola Pedro, ¿qué deseas hacer hoy?
-[PML:choice id="acciones"]
-  [PML:opt id="book"   value="Reservar cita" /]
-  [PML:opt id="prices" value="Ver precios"   /]
+[PML:type attr-1="value-1" attr-2="value-2" /]
+```
+
+### 4.3 Container component
+
+Components with child content (other components or text, as allowed by the composition rules in §8).
+
+```
+[PML:type attr="value"]
+  child content
+[/PML:type]
+```
+
+### 4.4 Strict lexical rules
+
+| Rule                | Detail                                                                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Encoding**        | All content is UTF-8.                                                                                                                   |
+| **Case**            | Component and attribute names are in `lowercase` or `kebab-case`. Never `camelCase`, never `snake_case`, never uppercase.               |
+| **Attributes**      | Syntax: `name="value"`. Names follow `[a-z][a-z0-9-]*`.                                                                                 |
+| **Quotes**          | Values are delimited by `"` (preferred) or `'`. Never mix within the same attribute.                                                    |
+| **Nested quotes**   | If a value contains the same quote that delimits it, use HTML entities (`&quot;`, `&#39;`).                                             |
+| **Forbidden**       | No JSON, no `< >`, no literal `[` `]` characters outside components or inside attribute values.                                         |
+| **IDs**             | Every interactive component **must** declare `id="..."`. Format: `kebab-case`, no spaces or special characters, must not start with a digit. |
+| **Uniqueness**      | `id`s are unique within a message.                                                                                                      |
+| **Self-closing**    | Must end with a space before the slash: ` /]`.                                                                                          |
+| **Closing**         | Containers are closed with `[/PML:type]`. The type name must exactly match the opening tag.                                             |
+| **Escaping**        | There are no `\` escape sequences. Use HTML entities or `[PML:raw]` when literals are needed.                                            |
+
+> URL encoding applies to **interaction values**, not to attributes of PML components emitted by the agent. See §7.2.
+
+### 4.5 Example of a valid message
+
+```
+Hi Pedro, what would you like to do today?
+[PML:choice id="actions"]
+  [PML:opt id="book"   value="Book appointment" /]
+  [PML:opt id="prices" value="See prices"       /]
 [/PML:choice]
 ```
 
-### 4.6 Tipos de componentes
+### 4.6 Component types
 
-**Componentes de información (pasivos):**
+**Information components (passive):**
 
-- `text` — Texto estático con estilo
-- `markdown` — Texto con formato Markdown
-- `facts` — Lista de pares clave-valor
-- `dtable` — Tabla de datos
-- `image` — Imagen estática
-- `media` — Video o audio
-- `divider` — Separador horizontal
-- `raw` — Bloque de texto sin procesar (escape)
+- `text` — Static text with style
+- `markdown` — Text with Markdown formatting
+- `facts` — Key-value pair list
+- `dtable` — Data table
+- `image` — Static image
+- `media` — Video or audio
+- `divider` — Horizontal separator
+- `raw` — Unparsed text block (escape)
 
-**Componentes de interacción (interactivos):**
+**Interaction components (interactive):**
 
-- `input` — Campo de entrada (texto, número, fecha, archivo, etc.)
-- `toggle` — Interruptor binario
-- `choice` — Selección entre opciones
-- `confirm` — Diálogo de confirmación
-- `form` — Contenedor de campos con submit único (emite una sola `[[INTERACTION]]` multi-campo)
+- `input` — Input field (text, number, date, file, etc.)
+- `toggle` — Binary switch
+- `choice` — Selection between options
+- `confirm` — Confirmation dialog
+- `form` — Field container with single submit (emits a single multi-field `[[INTERACTION]]`)
 
-**Componentes auxiliares (solo válidos dentro de su contenedor):**
+**Auxiliary components (only valid inside their container):**
 
-- `opt` — Opción dentro de `choice`
-- `fact` — Entrada dentro de `facts`
-- `dtrow`, `dtcol` — Fila y celda dentro de `dtable`
+- `opt` — Option inside `choice`
+- `fact` — Entry inside `facts`
+- `dtrow`, `dtcol` — Row and cell inside `dtable`
 
-Los componentes de información se renderizan automáticamente en el flujo del chat. Los componentes de interacción requieren manejo especial: la ChatApp captura la acción del usuario y emite `[[INTERACTION]]` al agente.
+Information components render automatically in the chat flow. Interaction components require special handling: the ChatApp captures the user action and emits `[[INTERACTION]]` to the agent.
 
-### 4.7 Atributos globales
+### 4.7 Global attributes
 
-Estos atributos pueden aplicarse a cualquier componente, salvo las restricciones notadas:
+These attributes may be applied to any component, except for the restrictions noted:
 
-| Atributo   | Aplicable a  | Tipo             | Descripción                                                          |
-| ---------- | ------------ | ---------------- | -------------------------------------------------------------------- |
-| `id`       | Todos        | string           | Identificador. **Obligatorio en interactivos**, opcional en pasivos. |
-| `disabled` | Interactivos | `true` / `false` | Deshabilita la interacción. Default: `false`.                        |
-| `visible`  | Todos        | `true` / `false` | Si es `false`, el componente no se renderiza. Default: `true`.       |
-| `tooltip`  | Todos        | string           | Texto de ayuda al mantener presionado (mobile) o hover (desktop).    |
-| `error`    | Interactivos | string           | Mensaje de error asociado. Se renderiza debajo del componente.       |
+| Attribute  | Applies to    | Type             | Description                                                              |
+| ---------- | ------------- | ---------------- | ------------------------------------------------------------------------ |
+| `id`       | All           | string           | Identifier. **Required on interactives**, optional on passives.          |
+| `disabled` | Interactives  | `true` / `false` | Disables the interaction. Default: `false`.                              |
+| `visible`  | All           | `true` / `false` | If `false`, the component is not rendered. Default: `true`.              |
+| `tooltip`  | All           | string           | Help text shown on long-press (mobile) or hover (desktop).               |
+| `error`    | Interactives  | string           | Error message associated with the component. Rendered below it.          |
 
 ---
 
-## 5. Componentes de información
+## 5. Information components
 
-Solo deben usarse para mostrar información al usuario. No emiten interacciones.
+Use only to show information to the user. They do not emit interactions.
 
 ### 5.1 text
 
-Bloque de texto estático con estilo.
+Static text block with style.
 
-| Atributo | Requerido | Tipo                                                 | Descripción                           |
-| -------- | --------- | ---------------------------------------------------- | ------------------------------------- |
-| `type`   | No        | `header` / `title` / `paragraph` / `muted` / `label` | Tipo semántico. Default: `paragraph`. |
-| `style`  | No        | `bold` / `italic` / `muted` / `normal`               | Estilo visual. Default: `normal`.     |
-| `size`   | No        | `small` / `medium` / `large`                         | Tamaño. Default: `medium`.            |
-| `align`  | No        | `left` / `center` / `right`                          | Alineación. Default: `left`.          |
+| Attribute | Required | Type                                                 | Description                            |
+| --------- | -------- | ---------------------------------------------------- | -------------------------------------- |
+| `type`    | No       | `header` / `title` / `paragraph` / `muted` / `label` | Semantic type. Default: `paragraph`.   |
+| `style`   | No       | `bold` / `italic` / `muted` / `normal`               | Visual style. Default: `normal`.       |
+| `size`    | No       | `small` / `medium` / `large`                         | Size. Default: `medium`.               |
+| `align`   | No       | `left` / `center` / `right`                          | Alignment. Default: `left`.            |
 
 ```
 [PML:text type="header" size="large" style="bold"]
-Tu pedido está en camino
+Your order is on its way
 [/PML:text]
 
 [PML:text type="muted" size="small"]
-Estimamos entrega en 3-5 días hábiles
+Estimated delivery in 3-5 business days
 [/PML:text]
 ```
 
 ### 5.2 markdown
 
-Bloque de texto con formato Markdown completo.
+Text block with full Markdown formatting.
 
-| Atributo | Requerido | Tipo   | Descripción   |
-| -------- | --------- | ------ | ------------- |
-| `id`     | No        | string | Identificador |
+| Attribute | Required | Type   | Description |
+| --------- | -------- | ------ | ----------- |
+| `id`      | No       | string | Identifier  |
 
 ```
 [PML:markdown]
-### Instrucciones de envío
+### Shipping instructions
 
-1. **Empaca** el producto en su caja original
-2. **Pega** la etiqueta de envío en la parte exterior
-3. **Lleva** el paquete a cualquier centro de envío
+1. **Pack** the product in its original box
+2. **Stick** the shipping label on the outside
+3. **Drop off** the package at any shipping center
 
-> El reembolso se procesa en 5-7 días hábiles.
+> Refunds are processed in 5-7 business days.
 
-Para más info visita nuestra [guía de envíos](https://peppo.com/envios).
+For more info visit our [shipping guide](https://peppo.com/shipping).
 [/PML:markdown]
 ```
 
-**Soporta:** negritas, cursivas, listas, enlaces, código inline, blockquotes, encabezados.
+**Supports:** bold, italics, lists, links, inline code, blockquotes, headings.
 
-**Nota de parsing:** los corchetes propios de Markdown (`[texto](url)`) son seguros. El parser solo activa el modo PML cuando encuentra exactamente `[PML:`.
+**Parsing note:** Markdown's own brackets (`[text](url)`) are safe. The parser only activates PML mode when it finds exactly `[PML:`.
 
 ### 5.3 facts
 
-Tabla de pares clave-valor.
+Key-value pair table.
 
-| Atributo  | Requerido | Tipo      | Descripción                       |
-| --------- | --------- | --------- | --------------------------------- |
-| `columns` | No        | `1` / `2` | Columnas de layout. Default: `1`. |
+| Attribute | Required | Type      | Description                       |
+| --------- | -------- | --------- | --------------------------------- |
+| `columns` | No       | `1` / `2` | Layout columns. Default: `1`.     |
 
-**Contenido:** uno o más `[PML:fact label="..." value="..." /]` como hijos directos.
+**Content:** one or more `[PML:fact label="..." value="..." /]` as direct children.
 
 ```
 [PML:facts]
-  [PML:fact label="Producto" value="Nike Air Max 90" /]
-  [PML:fact label="Talla"    value="42"              /]
-  [PML:fact label="Precio"   value="$2,499 MXN"      /]
-  [PML:fact label="Envío"    value="Gratis"          /]
+  [PML:fact label="Product" value="Nike Air Max 90" /]
+  [PML:fact label="Size"    value="9"               /]
+  [PML:fact label="Price"   value="$129 USD"        /]
+  [PML:fact label="Shipping" value="Free"           /]
 [/PML:facts]
 ```
 
 ### 5.4 dtable
 
-Tabla de datos genérica.
+Generic data table.
 
-| Atributo  | Requerido | Tipo   | Descripción                              |
-| --------- | --------- | ------ | ---------------------------------------- |
-| `columns` | Sí        | string | Nombres de columnas separados por comas. |
+| Attribute | Required | Type   | Description                              |
+| --------- | -------- | ------ | ---------------------------------------- |
+| `columns` | Yes      | string | Comma-separated column names.            |
 
-**Contenido:** filas envueltas en `[PML:dtrow] ... [/PML:dtrow]`. Cada celda es un `[PML:dtcol value="..." /]` autofinalizado. El número de celdas por fila debe coincidir con el número de columnas declaradas.
+**Content:** rows wrapped in `[PML:dtrow] ... [/PML:dtrow]`. Each cell is a self-closing `[PML:dtcol value="..." /]`. The number of cells per row must match the declared column count.
 
 ```
-[PML:dtable columns="Plan,Precio,Agentes,Mensajes"]
+[PML:dtable columns="Plan,Price,Agents,Messages"]
   [PML:dtrow]
-    [PML:dtcol value="Básico" /][PML:dtcol value="$9/mes"  /][PML:dtcol value="1"  /][PML:dtcol value="100/día"   /]
+    [PML:dtcol value="Basic" /][PML:dtcol value="$9/mo"  /][PML:dtcol value="1"  /][PML:dtcol value="100/day"  /]
   [/PML:dtrow]
   [PML:dtrow]
-    [PML:dtcol value="Pro"    /][PML:dtcol value="$29/mes" /][PML:dtcol value="10" /][PML:dtcol value="Ilimitado" /]
+    [PML:dtcol value="Pro"   /][PML:dtcol value="$29/mo" /][PML:dtcol value="10" /][PML:dtcol value="Unlimited" /]
   [/PML:dtrow]
 [/PML:dtable]
 ```
 
 ### 5.5 image
 
-Imagen estática.
+Static image.
 
-| Atributo  | Requerido | Tipo                                  | Descripción                |
-| --------- | --------- | ------------------------------------- | -------------------------- |
-| `url`     | Sí        | url                                   | URL de la imagen.          |
-| `alt`     | No        | string                                | Texto alternativo.         |
-| `size`    | No        | `small` / `medium` / `large` / `full` | Tamaño. Default: `medium`. |
-| `caption` | No        | string                                | Pie de imagen.             |
+| Attribute | Required | Type                                  | Description                |
+| --------- | -------- | ------------------------------------- | -------------------------- |
+| `url`     | Yes      | url                                   | Image URL.                 |
+| `alt`     | No       | string                                | Alternative text.          |
+| `size`    | No       | `small` / `medium` / `large` / `full` | Size. Default: `medium`.   |
+| `caption` | No       | string                                | Image caption.             |
 
 ```
-[PML:image url="https://cdn.peppo.com/producto.jpg" alt="Nike Air Max 90"
-  size="large" caption="Nuevo modelo 2026" /]
+[PML:image url="https://cdn.peppo.com/product.jpg" alt="Nike Air Max 90"
+  size="large" caption="New 2026 model" /]
 ```
 
 ### 5.6 media
 
-Reproductor de video o audio.
+Video or audio player.
 
-| Atributo  | Requerido | Tipo              | Descripción                     |
-| --------- | --------- | ----------------- | ------------------------------- |
-| `url`     | Sí        | url               | URL del archivo.                |
-| `type`    | Sí        | `video` / `audio` | Tipo de medio.                  |
-| `poster`  | No        | url               | Imagen de portada (solo video). |
-| `caption` | No        | string            | Pie de medio.                   |
+| Attribute | Required | Type              | Description                       |
+| --------- | -------- | ----------------- | --------------------------------- |
+| `url`     | Yes      | url               | File URL.                         |
+| `type`    | Yes      | `video` / `audio` | Media type.                       |
+| `poster`  | No       | url               | Cover image (video only).         |
+| `caption` | No       | string            | Media caption.                    |
 
 ```
 [PML:media url="https://cdn.peppo.com/demo.mp4" type="video"
@@ -383,1182 +384,1201 @@ Reproductor de video o audio.
 
 ### 5.7 divider
 
-Línea separadora.
+Separator line.
 
-| Atributo | Requerido | Tipo   | Descripción              |
-| -------- | --------- | ------ | ------------------------ |
-| `label`  | No        | string | Texto centrado opcional. |
+| Attribute | Required | Type   | Description                  |
+| --------- | -------- | ------ | ---------------------------- |
+| `label`   | No       | string | Optional centered text.      |
 
 ```
 [PML:divider /]
-[PML:divider label="O continúa con" /]
+[PML:divider label="Or continue with" /]
 ```
 
 ### 5.8 raw
 
-Bloque de texto plano que desactiva el parser de PML. Permite mostrar sintaxis PML literal sin que sea interpretada.
+Plain text block that turns off the PML parser. Allows displaying literal PML syntax without it being interpreted.
 
 ```
 [PML:raw]
-Para mostrar un texto en negritas, utiliza el componente text:
-[PML:text style="bold"]Texto en negritas[/PML:text]
+To show bold text, use the text component:
+[PML:text style="bold"]Bold text[/PML:text]
 [/PML:raw]
 ```
 
-> Dentro de `[PML:raw]` no existen atributos. El parser solo busca el cierre exacto `[/PML:raw]`.
+> Inside `[PML:raw]` no attributes exist. The parser only looks for the exact closing tag `[/PML:raw]`.
 
 ---
 
-## 6. Componentes de interacción
+## 6. Interaction components
 
-Los componentes interactivos generan una `[[INTERACTION]]` cuando el usuario completa su acción (envío, selección, toggle, confirmación). El formato exacto de la interacción se especifica en §7.
+Interactive components generate an `[[INTERACTION]]` when the user completes their action (submit, selection, toggle, confirmation). The exact interaction format is specified in §7.
 
 ### 6.1 input
 
-Campo de entrada de datos. El subtipo se selecciona con el atributo `type`.
+Data entry field. The subtype is selected with the `type` attribute.
 
-**Subtipos disponibles:**
+**Available subtypes:**
 
-- `text` — Campo de texto (single o multilínea)
-- `number` — Campo numérico
-- `currency` — Campo monetario
-- `contact` — Captura de contacto (teléfono) del sistema
-- `date` — Selector de fecha
-- `time` — Selector de hora
-- `datetime` — Selector de fecha y hora
-- `location` — Selector de ubicación / GPS
-- `file` — Selector de archivo
+- `text` — Text field (single or multi-line)
+- `number` — Numeric field
+- `currency` — Monetary field
+- `contact` — Capture of system contact (phone)
+- `date` — Date picker
+- `time` — Time picker
+- `datetime` — Date and time picker
+- `location` — Location / GPS picker
+- `file` — File picker
 
-**Atributos comunes a todos los `input`:**
+**Attributes common to all `input`s:**
 
-| Atributo   | Requerido | Tipo                | Descripción                     |
-| ---------- | --------- | ------------------- | ------------------------------- |
-| `id`       | Sí        | string              | Identificador único.            |
-| `type`     | Sí        | string              | Subtipo (ver lista arriba).     |
-| `label`    | No        | string              | Etiqueta visible.               |
-| `required` | No        | `true` / `false`    | Obligatorio. Default: `false`.  |
-| `readonly` | No        | `true` / `false`    | Solo lectura. Default: `false`. |
-| `value`    | No        | depende del subtipo | Valor inicial.                  |
+| Attribute  | Required | Type                  | Description                       |
+| ---------- | -------- | --------------------- | --------------------------------- |
+| `id`       | Yes      | string                | Unique identifier.                |
+| `type`     | Yes      | string                | Subtype (see list above).         |
+| `label`    | No       | string                | Visible label.                    |
+| `required` | No       | `true` / `false`      | Required. Default: `false`.       |
+| `readonly` | No       | `true` / `false`      | Read-only. Default: `false`.      |
+| `value`    | No       | depends on subtype    | Initial value.                    |
 
 #### 6.1.1 input type="text"
 
-| Atributo        | Requerido | Tipo    | Descripción                                   |
-| --------------- | --------- | ------- | --------------------------------------------- |
-| `placeholder`   | No        | string  | Texto de ayuda.                               |
-| `multiline`     | No        | boolean | Campo multilínea. Default: `false`.           |
-| `validate`      | No        | string  | Expresión regular de validación local.        |
-| `error-message` | No        | string  | Mensaje a mostrar si la validación falla.     |
-| `max-length`    | No        | number  | Máximo de caracteres.                         |
-| `min-length`    | No        | number  | Mínimo de caracteres.                         |
-| `password`      | No        | boolean | Oculta el texto al teclear. Default: `false`. |
+| Attribute       | Required | Type    | Description                                   |
+| --------------- | -------- | ------- | --------------------------------------------- |
+| `placeholder`   | No       | string  | Help text.                                    |
+| `multiline`     | No       | boolean | Multi-line field. Default: `false`.           |
+| `validate`      | No       | string  | Regex for local validation.                   |
+| `error-message` | No       | string  | Message shown if validation fails.            |
+| `max-length`    | No       | number  | Maximum characters.                           |
+| `min-length`    | No       | number  | Minimum characters.                           |
+| `password`      | No       | boolean | Hides text while typing. Default: `false`.    |
 
 ```
-[PML:input id="nombre" type="text" label="Nombre completo"
-  placeholder="Ingresa tu nombre" required="true" /]
+[PML:input id="name" type="text" label="Full name"
+  placeholder="Enter your name" required="true" /]
 ```
 
-**Interacción generada:**
+**Generated interaction:**
 
 ```
-[[INTERACTION id="nombre" value="Juan+Perez"]]
+[[INTERACTION id="name" value="John+Smith"]]
 ```
 
-Con `multiline="true"`:
+With `multiline="true"`:
 
 ```
-[PML:input id="comentarios" type="text" label="Comentarios"
-  multiline="true" placeholder="Escribe tus comentarios" /]
+[PML:input id="comments" type="text" label="Comments"
+  multiline="true" placeholder="Write your comments" /]
 ```
 
 ```
-[[INTERACTION id="comentarios" value="Primera+l%C3%ADnea%0ASegunda+l%C3%ADnea"]]
+[[INTERACTION id="comments" value="First+line%0ASecond+line"]]
 ```
 
-> Los saltos de línea se codifican como `%0A` (ver §7.2).
+> Line breaks are encoded as `%0A` (see §7.2).
 
 #### 6.1.2 input type="number"
 
-| Atributo      | Requerido | Tipo    | Descripción                        |
-| ------------- | --------- | ------- | ---------------------------------- |
-| `placeholder` | No        | string  | Texto de ayuda.                    |
-| `integer`     | No        | boolean | Solo enteros. Default: `false`.    |
-| `decimals`    | No        | number  | Número de decimales. Default: `0`. |
-| `min`         | No        | number  | Valor mínimo.                      |
-| `max`         | No        | number  | Valor máximo.                      |
+| Attribute     | Required | Type    | Description                       |
+| ------------- | -------- | ------- | --------------------------------- |
+| `placeholder` | No       | string  | Help text.                        |
+| `integer`     | No       | boolean | Integers only. Default: `false`.  |
+| `decimals`    | No       | number  | Number of decimals. Default: `0`. |
+| `min`         | No       | number  | Minimum value.                    |
+| `max`         | No       | number  | Maximum value.                    |
 
 ```
-[PML:input id="edad" type="number" label="Edad" integer="true" min="18" max="99" /]
-```
-
-```
-[[INTERACTION id="edad" value="25"]]
+[PML:input id="age" type="number" label="Age" integer="true" min="18" max="99" /]
 ```
 
 ```
-[PML:input id="estatura" type="number" label="Estatura"
+[[INTERACTION id="age" value="25"]]
+```
+
+```
+[PML:input id="height" type="number" label="Height"
   placeholder="1.75" decimals="2" /]
 ```
 
 ```
-[[INTERACTION id="estatura" value="1.75"]]
+[[INTERACTION id="height" value="1.75"]]
 ```
 
 #### 6.1.3 input type="currency"
 
-| Atributo      | Requerido | Tipo   | Descripción                                          |
-| ------------- | --------- | ------ | ---------------------------------------------------- |
-| `placeholder` | No        | string | Texto de ayuda.                                      |
-| `currency`    | No        | string | Código ISO 4217 (`MXN`, `USD`, ...). Default: `MXN`. |
-| `decimals`    | No        | number | Número de decimales. Default: `2`.                   |
-| `min`         | No        | number | Valor mínimo.                                        |
-| `max`         | No        | number | Valor máximo.                                        |
+| Attribute     | Required | Type   | Description                                          |
+| ------------- | -------- | ------ | ---------------------------------------------------- |
+| `placeholder` | No       | string | Help text.                                           |
+| `currency`    | No       | string | ISO 4217 code (`USD`, `MXN`, ...). Default: `USD`.   |
+| `decimals`    | No       | number | Number of decimals. Default: `2`.                    |
+| `min`         | No       | number | Minimum value.                                       |
+| `max`         | No       | number | Maximum value.                                       |
 
 ```
-[PML:input id="monto" type="currency" label="Monto"
-  currency="MXN" min="1" max="10000" /]
+[PML:input id="amount" type="currency" label="Amount"
+  currency="USD" min="1" max="10000" /]
 ```
 
-**Interacción generada** (valor numérico crudo, sin símbolos):
+**Generated interaction** (raw numeric value, no symbols):
 
 ```
-[[INTERACTION id="monto" value="1500.50"]]
+[[INTERACTION id="amount" value="1500.50"]]
 ```
 
-> El valor de la interacción es siempre el número crudo (sin símbolo de moneda, sin separadores de miles, con punto decimal). La presentación visual con símbolo y separadores es responsabilidad del renderer.
+> The interaction value is always the raw number (no currency symbol, no thousands separators, with a decimal point). Visual presentation with symbol and separators is the renderer's responsibility.
 
 #### 6.1.4 input type="contact"
 
-Recaba el número de teléfono del usuario usando los mecanismos nativos de la ChatApp (selector de contactos, autorrelleno, etc.). No tiene atributos adicionales.
+Captures the user's phone number using the ChatApp's native mechanisms (contact picker, autofill, etc.). It has no additional attributes.
 
 ```
-[PML:input id="telefono" type="contact" label="Toca para compartir tu teléfono" required="true" /]
+[PML:input id="phone" type="contact" label="Tap to share your phone" required="true" /]
 ```
 
 ```
-[[INTERACTION id="telefono" value="%2B5215512345678"]]
+[[INTERACTION id="phone" value="%2B15551234567"]]
 ```
 
-> El `+` inicial del E.164 se URL-codifica como `%2B`.
+> The leading `+` of an E.164 number is URL-encoded as `%2B`.
 
 #### 6.1.5 input type="date"
 
-Selector de fecha. El valor de la interacción es ISO 8601 (`YYYY-MM-DD`).
+Date picker. The interaction value is ISO 8601 (`YYYY-MM-DD`).
 
-| Atributo      | Requerido | Tipo   | Descripción                |
-| ------------- | --------- | ------ | -------------------------- |
-| `placeholder` | No        | string | Texto de ayuda.            |
-| `min`         | No        | string | Fecha mínima `YYYY-MM-DD`. |
-| `max`         | No        | string | Fecha máxima `YYYY-MM-DD`. |
-
-```
-[PML:input id="fecha" type="date" label="Fecha de la cita" /]
-```
+| Attribute     | Required | Type   | Description                |
+| ------------- | -------- | ------ | -------------------------- |
+| `placeholder` | No       | string | Help text.                 |
+| `min`         | No       | string | Minimum date `YYYY-MM-DD`. |
+| `max`         | No       | string | Maximum date `YYYY-MM-DD`. |
 
 ```
-[[INTERACTION id="fecha" value="2026-06-15"]]
+[PML:input id="date" type="date" label="Appointment date" /]
+```
+
+```
+[[INTERACTION id="date" value="2026-06-15"]]
 ```
 
 #### 6.1.6 input type="time"
 
-Selector de hora. **El valor de la interacción es siempre `HH:mm` en formato 24 horas, independientemente del modo de presentación.** El atributo `am-pm` solo afecta la UI.
+Time picker. **The interaction value is always `HH:mm` in 24-hour format, regardless of the presentation mode.** The `am-pm` attribute only affects the UI.
 
-| Atributo      | Requerido | Tipo    | Descripción                                                 |
-| ------------- | --------- | ------- | ----------------------------------------------------------- |
-| `placeholder` | No        | string  | Texto de ayuda.                                             |
-| `am-pm`       | No        | boolean | Presenta selector AM/PM al usuario. Default: `false` (24h). |
-
-```
-[PML:input id="hora" type="time" label="Hora" am-pm="true" /]
-```
+| Attribute     | Required | Type    | Description                                                  |
+| ------------- | -------- | ------- | ------------------------------------------------------------ |
+| `placeholder` | No       | string  | Help text.                                                   |
+| `am-pm`       | No       | boolean | Shows the user an AM/PM selector. Default: `false` (24h).    |
 
 ```
-[[INTERACTION id="hora" value="14:45"]]
+[PML:input id="time" type="time" label="Time" am-pm="true" /]
+```
+
+```
+[[INTERACTION id="time" value="14:45"]]
 ```
 
 #### 6.1.7 input type="datetime"
 
-Selector de fecha y hora. El valor de la interacción es ISO 8601 sin zona horaria: `YYYY-MM-DDTHH:mm` (24h).
+Date and time picker. The interaction value is ISO 8601 without timezone: `YYYY-MM-DDTHH:mm` (24h).
 
-| Atributo      | Requerido | Tipo   | Descripción     |
-| ------------- | --------- | ------ | --------------- |
-| `placeholder` | No        | string | Texto de ayuda. |
-
-```
-[PML:input id="cita" type="datetime" label="Fecha y hora" /]
-```
+| Attribute     | Required | Type   | Description  |
+| ------------- | -------- | ------ | ------------ |
+| `placeholder` | No       | string | Help text.   |
 
 ```
-[[INTERACTION id="cita" value="2026-06-15T14:45"]]
+[PML:input id="appointment" type="datetime" label="Date and time" /]
+```
+
+```
+[[INTERACTION id="appointment" value="2026-06-15T14:45"]]
 ```
 
 #### 6.1.8 input type="location"
 
-Selector de ubicación. El valor de la interacción es `latitud,longitud` (decimales con punto). El renderer puede ofrecer GPS del dispositivo, búsqueda de dirección o mini-mapa con pin.
+Location picker. The interaction value is `latitude,longitude` (decimals with point). The renderer may offer device GPS, address search or a mini-map with a pin.
 
 ```
-[PML:input id="ubicacion" type="location" label="Tu ubicación" /]
+[PML:input id="location" type="location" label="Your location" /]
 ```
 
 ```
-[[INTERACTION id="ubicacion" value="19.4326,-99.1332"]]
+[[INTERACTION id="location" value="40.7128,-74.0060"]]
 ```
 
 #### 6.1.9 input type="file"
 
-Selector de archivo único. El renderer sube el archivo a un endpoint configurado por la ChatApp y obtiene una URL que se envía como valor de la interacción.
+Single file picker. The renderer uploads the file to an endpoint configured by the ChatApp and obtains a URL that is sent as the interaction value.
 
-| Atributo   | Requerido | Tipo   | Descripción                                               |
-| ---------- | --------- | ------ | --------------------------------------------------------- |
-| `accept`   | No        | string | Tipos MIME permitidos (ej: `image/*`, `application/pdf`). |
-| `max-size` | No        | string | Tamaño máximo (ej: `5MB`, `10MB`).                        |
+| Attribute  | Required | Type   | Description                                                |
+| ---------- | -------- | ------ | ---------------------------------------------------------- |
+| `accept`   | No       | string | Allowed MIME types (e.g.: `image/*`, `application/pdf`).   |
+| `max-size` | No       | string | Maximum size (e.g.: `5MB`, `10MB`).                        |
 
 ```
-[PML:input id="foto" type="file" label="Sube tu identificación"
+[PML:input id="photo" type="file" label="Upload your ID"
   accept="image/*" max-size="5MB" /]
 ```
 
 ```
-[[INTERACTION id="foto" value="https://cdn.peppo.com/uploads/abc123.jpg"]]
+[[INTERACTION id="photo" value="https://cdn.peppo.com/uploads/abc123.jpg"]]
 ```
 
-> La URL devuelta proviene del servicio de almacenamiento de la ChatApp; no se URL-codifica porque ya es una URL válida ASCII-safe.
+> The returned URL comes from the ChatApp's storage service; it is not URL-encoded because it is already a valid ASCII-safe URL.
 
 ---
 
 ### 6.2 toggle
 
-Interruptor binario.
+Binary switch.
 
-| Atributo    | Requerido | Tipo             | Descripción                                                  |
-| ----------- | --------- | ---------------- | ------------------------------------------------------------ |
-| `id`        | Sí        | string           | Identificador único.                                         |
-| `label`     | Sí        | string           | Texto descriptivo del estado activo.                         |
-| `checked`   | No        | `true` / `false` | Estado inicial. Default: `false`.                            |
-| `value-on`  | No        | string           | Valor que se envía cuando está activo. Default: `"true"`.    |
-| `value-off` | No        | string           | Valor que se envía cuando está inactivo. Default: `"false"`. |
-| `required`  | No        | `true` / `false` | Obligatorio. Default: `false`.                               |
+| Attribute   | Required | Type             | Description                                                   |
+| ----------- | -------- | ---------------- | ------------------------------------------------------------- |
+| `id`        | Yes      | string           | Unique identifier.                                            |
+| `label`     | Yes      | string           | Descriptive text of the active state.                         |
+| `checked`   | No       | `true` / `false` | Initial state. Default: `false`.                              |
+| `value-on`  | No       | string           | Value sent when active. Default: `"true"`.                    |
+| `value-off` | No       | string           | Value sent when inactive. Default: `"false"`.                 |
+| `required`  | No       | `true` / `false` | Required. Default: `false`.                                   |
 
 ```
-[PML:toggle id="terminos" label="Acepto los términos y condiciones"
+[PML:toggle id="terms" label="I accept the terms and conditions"
   checked="false" required="true" /]
 ```
 
-**Interacción generada (activado):**
+**Generated interaction (active):**
 
 ```
-[[INTERACTION id="terminos" value="true"]]
+[[INTERACTION id="terms" value="true"]]
 ```
 
-**Con valores custom:**
+**With custom values:**
 
 ```
-[PML:toggle id="notif" label="Recibir notificaciones"
-  value-on="suscrito" value-off="no-suscrito" /]
+[PML:toggle id="notif" label="Receive notifications"
+  value-on="subscribed" value-off="not-subscribed" /]
 ```
 
 ```
-[[INTERACTION id="notif" value="suscrito"]]
+[[INTERACTION id="notif" value="subscribed"]]
 ```
 
 ---
 
 ### 6.3 choice
 
-Selección entre opciones (botones, radio o dropdown).
+Selection between options (buttons, radio, or dropdown).
 
-| Atributo      | Requerido | Tipo                             | Descripción                           |
-| ------------- | --------- | -------------------------------- | ------------------------------------- |
-| `id`          | Sí        | string                           | Identificador único.                  |
-| `style`       | No        | `buttons` / `dropdown` / `radio` | Renderizado. Default: `buttons`.      |
-| `multi`       | No        | `true` / `false`                 | Selección múltiple. Default: `false`. |
-| `placeholder` | No        | string                           | Texto inicial (solo `dropdown`).      |
-| `required`    | No        | `true` / `false`                 | Obligatorio. Default: `false`.        |
+| Attribute     | Required | Type                             | Description                            |
+| ------------- | -------- | -------------------------------- | -------------------------------------- |
+| `id`          | Yes      | string                           | Unique identifier.                     |
+| `style`       | No       | `buttons` / `dropdown` / `radio` | Rendering. Default: `buttons`.         |
+| `multi`       | No       | `true` / `false`                 | Multiple selection. Default: `false`.  |
+| `placeholder` | No       | string                           | Initial text (`dropdown` only).        |
+| `required`    | No       | `true` / `false`                 | Required. Default: `false`.            |
 
-**Contenido:** uno o más `[PML:opt /]` como hijos directos.
+**Content:** one or more `[PML:opt /]` as direct children.
 
-#### Atributos de `opt`
+#### `opt` attributes
 
-| Atributo | Requerido   | Tipo   | Descripción                                                                                                                                                     |
-| -------- | ----------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `value`  | Sí          | string | Texto visible al usuario.                                                                                                                                       |
-| `id`     | Condicional | string | Identificador. **Obligatorio si `value` contiene espacios, acentos o caracteres no `[a-z0-9-]`.** Si se omite y `value` es válido como id, este se usa como id. |
+| Attribute | Required    | Type   | Description                                                                                                                                                       |
+| --------- | ----------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `value`   | Yes         | string | Text visible to the user.                                                                                                                                         |
+| `id`      | Conditional | string | Identifier. **Required if `value` contains spaces, accents or non-`[a-z0-9-]` characters.** If omitted and `value` is valid as an id, it is used as the id.       |
 
-> **Regla simplificada:** declara siempre `id` explícito en `opt` salvo cuando el `value` sea un identificador trivial (números, palabras cortas en minúsculas sin acentos). Esto evita ambigüedad y reduce errores del LLM.
+> **Simplified rule:** always declare explicit `id` on `opt` unless the `value` is a trivial identifier (numbers, short lowercase words without accents). This avoids ambiguity and reduces LLM errors.
 
-#### Selección simple
+#### Single selection
 
 ```
-[PML:choice id="talla" style="buttons"]
-  [PML:opt value="38" /]
-  [PML:opt value="39" /]
-  [PML:opt value="40" /]
-  [PML:opt value="42" /]
+[PML:choice id="size" style="buttons"]
+  [PML:opt value="7"  /]
+  [PML:opt value="8"  /]
+  [PML:opt value="9"  /]
+  [PML:opt value="10" /]
 [/PML:choice]
 ```
 
 ```
-[[INTERACTION id="talla" value="42"]]
+[[INTERACTION id="size" value="10"]]
 ```
 
-#### Con ids explícitos
+#### With explicit ids
 
 ```
-[PML:choice id="accion"]
-  [PML:opt id="reservar" value="Reservar cita" /]
-  [PML:opt id="precios"  value="Ver precios"   /]
-  [PML:opt id="cancelar" value="Cancelar"      /]
+[PML:choice id="action"]
+  [PML:opt id="book"   value="Book appointment" /]
+  [PML:opt id="prices" value="See prices"       /]
+  [PML:opt id="cancel" value="Cancel"           /]
 [/PML:choice]
 ```
 
 ```
-[[INTERACTION id="accion" value="reservar"]]
+[[INTERACTION id="action" value="book"]]
 ```
 
-#### Selección múltiple
+#### Multiple selection
 
-Cuando `multi="true"`, los ids seleccionados se concatenan en `value` separados por coma sin espacios.
+When `multi="true"`, the selected ids are concatenated in `value` separated by commas without spaces.
 
 ```
-[PML:choice id="dias" multi="true"]
-  [PML:opt id="lun" value="Lunes"     /]
-  [PML:opt id="mar" value="Martes"    /]
-  [PML:opt id="mie" value="Miércoles" /]
+[PML:choice id="days" multi="true"]
+  [PML:opt id="mon" value="Monday"    /]
+  [PML:opt id="tue" value="Tuesday"   /]
+  [PML:opt id="wed" value="Wednesday" /]
 [/PML:choice]
 ```
 
 ```
-[[INTERACTION id="dias" value="lun,mar"]]
+[[INTERACTION id="days" value="mon,tue"]]
 ```
 
 ---
 
 ### 6.4 confirm
 
-Diálogo de confirmación. Renderiza un modal con dos acciones: aceptar o cancelar.
+Confirmation dialog. Renders a modal with two actions: accept or cancel.
 
-| Atributo        | Requerido | Tipo                             | Descripción                                              |
-| --------------- | --------- | -------------------------------- | -------------------------------------------------------- |
-| `id`            | Sí        | string                           | Identificador único.                                     |
-| `title`         | Sí        | string                           | Título del diálogo.                                      |
-| `message`       | No        | string                           | Mensaje descriptivo.                                     |
-| `confirm-label` | No        | string                           | Texto del botón de confirmación. Default: `"Confirmar"`. |
-| `cancel-label`  | No        | string                           | Texto del botón de cancelación. Default: `"Cancelar"`.   |
-| `style`         | No        | `default` / `danger` / `warning` | Estilo visual. Default: `default`.                       |
+| Attribute       | Required | Type                             | Description                                              |
+| --------------- | -------- | -------------------------------- | -------------------------------------------------------- |
+| `id`            | Yes      | string                           | Unique identifier.                                       |
+| `title`         | Yes      | string                           | Dialog title.                                            |
+| `message`       | No       | string                           | Descriptive message.                                     |
+| `confirm-label` | No       | string                           | Confirm button text. Default: `"Confirm"`.               |
+| `cancel-label`  | No       | string                           | Cancel button text. Default: `"Cancel"`.                 |
+| `style`         | No       | `default` / `danger` / `warning` | Visual style. Default: `default`.                        |
 
-**El valor devuelto en la interacción es semántico y fijo: `confirmed` o `cancelled`**, independientemente del idioma del texto del botón.
-
-```
-[PML:confirm id="eliminar-cuenta" title="¿Eliminar tu cuenta?"
-  message="Se borrarán todos tus datos."
-  confirm-label="Sí, eliminar" cancel-label="No, conservar" style="danger" /]
-```
-
-**Si el usuario confirma:**
+**The value returned in the interaction is semantic and fixed: `confirmed` or `cancelled`**, regardless of the button label language.
 
 ```
-[[INTERACTION id="eliminar-cuenta" value="confirmed"]]
+[PML:confirm id="delete-account" title="Delete your account?"
+  message="All your data will be erased."
+  confirm-label="Yes, delete" cancel-label="No, keep" style="danger" /]
 ```
 
-**Si el usuario cancela:**
+**If the user confirms:**
 
 ```
-[[INTERACTION id="eliminar-cuenta" value="cancelled"]]
+[[INTERACTION id="delete-account" value="confirmed"]]
+```
+
+**If the user cancels:**
+
+```
+[[INTERACTION id="delete-account" value="cancelled"]]
 ```
 
 ---
 
 ### 6.5 form
 
-Contenedor de campos con **un único submit**. Es el primer componente PML que captura múltiples valores en una sola acción: cuando el usuario presiona el botón submit y la validación local pasa, la ChatApp emite **una sola** `[[INTERACTION]]` cuyos atributos son los `id` de los hijos interactivos con sus valores capturados (formato multi-campo de §7.3).
+Field container with **a single submit**. It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each interactive child (multi-field format from §7.3).
 
-Es la versión MVP del componente: layout vertical simple, un solo CTA, sin secciones colapsables, sin steps, sin estilos especiales. Componentes adicionales (`stepper`, `form-section`, etc.) quedan para versiones futuras.
+This is the MVP version of the component: simple vertical layout, a single CTA, no collapsible sections, no steps, no special styles. Additional components (`stepper`, `form-section`, etc.) are deferred to future versions.
 
-#### Atributos
+#### Attributes
 
-| Atributo       | Requerido | Tipo   | Descripción                                            |
-| -------------- | --------- | ------ | ------------------------------------------------------ |
-| `id`           | Sí        | string | Identificador único del formulario (kebab-case).       |
-| `submit-label` | No        | string | Texto del botón de envío. Default: `"Enviar"`.         |
+| Attribute      | Required | Type   | Description                                              |
+| -------------- | -------- | ------ | -------------------------------------------------------- |
+| `id`           | Yes      | string | Unique identifier of the form (kebab-case).              |
+| `submit-label` | No       | string | Submit button text. Default: `"Submit"`.                 |
 
-> v1.5 no define cancel button, estilos, ni callbacks alternos. Si necesitas una acción "Cancelar", emite un `choice` adicional después del form.
+> v1.6 still does not define a cancel button, styles, or alternate callbacks (same as v1.5). If you need a "Cancel" action, emit an additional `choice` after the form.
 
-#### Hijos permitidos
+#### Allowed children
 
-| Hijo                                                                          | Permitido | Notas                                                                                       |
-| ----------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------- |
-| Pasivos simples: `text`, `markdown`, `divider`, `image`, `media`, `raw`       | Sí        | Para etiquetas, instrucciones, separadores visuales, secciones narrativas.                  |
-| Pasivo contenedor: `facts`                                                    | Sí        | Útil para mostrar resúmenes readonly antes del submit (`form > facts > fact` = 3 niveles).  |
-| Interactivos: `input` (todos los subtipos), `toggle`, `choice` (single y multi) | Sí      | Cada uno contribuye **un atributo** al `[[INTERACTION]]` final, con su `id` como nombre.    |
-| `dtable`                                                                      | **No**    | Excedería la profundidad máxima de 3 (`form > dtable > dtrow > dtcol` = 4).                |
-| `confirm`                                                                     | **No**    | Confirm es una acción modal autocontenida; mezclarlo con form crea ambigüedad de submit.    |
-| `form` anidado                                                                | **No**    | v1.5 prohíbe forms anidados; el agente debe usar flujos separados.                          |
+| Child                                                                            | Allowed | Notes                                                                                            |
+| -------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `raw`          | Yes     | For labels, instructions, visual separators, narrative sections.                                 |
+| Passive container: `facts`                                                       | Yes     | Useful to show readonly summaries before submit (`form > facts > fact` = 3 levels).              |
+| Interactives: `input` (all subtypes), `toggle`, `choice` (single and multi)      | Yes     | Each one contributes **one attribute** `field-<id>` to the final `[[INTERACTION]]` (§7.3).       |
+| `dtable`                                                                         | **No**  | Would exceed the maximum depth of 3 (`form > dtable > dtrow > dtcol` = 4).                       |
+| `confirm`                                                                        | **No**  | Confirm is a self-contained modal action; mixing it with form creates submit ambiguity.          |
+| Nested `form`                                                                    | **No**  | v1.5 forbids nested forms; the agent must use separate flows.                                    |
 
-#### Comportamiento del submit
+#### Submit behavior
 
-1. El usuario edita libremente los hijos interactivos del form. **Mientras el form está activo, sus hijos no emiten `[[INTERACTION]]` individuales** — sus valores quedan en estado local de la ChatApp.
-2. El usuario presiona el botón submit (texto: `submit-label`).
-3. La ChatApp ejecuta **validación local** en todos los hijos interactivos:
-   - `required="true"` → el valor no debe estar vacío.
-   - `validate="<regex>"` → el valor debe hacer match (input text).
-   - `min` / `max` → rango numérico (input number, currency).
-   - `min-length` / `max-length` → rango de longitud (input text).
-   - El tipo específico (date, datetime, location, etc.) debe estar bien formado.
-4. **Si alguna validación falla**:
-   - La ChatApp inyecta `error="..."` en cada hijo fallido (usando el `error-message` del componente si está definido, o un default genérico del renderer).
-   - **No** se emite `[[INTERACTION]]`. El form permanece en `live_capture`.
-   - El usuario corrige y vuelve a pulsar submit.
-5. **Si todas las validaciones pasan**:
-   - La ChatApp emite una sola `[[INTERACTION]]` con el `id` del form y un atributo por cada hijo interactivo.
-   - El form transiciona a `final_rendering`.
+1. The user freely edits the form's interactive children. **While the form is active, its children do not emit individual `[[INTERACTION]]`** — their values stay in the ChatApp's local state.
+2. The user presses the submit button (text: `submit-label`).
+3. The ChatApp runs **local validation** on all interactive children:
+   - `required="true"` → value must not be empty.
+   - `validate="<regex>"` → value must match (input text).
+   - `min` / `max` → numeric range (input number, currency).
+   - `min-length` / `max-length` → length range (input text).
+   - The specific type (date, datetime, location, etc.) must be well-formed.
+4. **If any validation fails**:
+   - The ChatApp injects `error="..."` on each failed child (using the component's `error-message` if defined, or a generic renderer default).
+   - **No** `[[INTERACTION]]` is emitted. The form remains in `live_capture`.
+   - The user corrects and presses submit again.
+5. **If all validations pass**:
+   - The ChatApp emits a single `[[INTERACTION]]` with the form's `id` and a `field-<sub-id>` attribute for each interactive child.
+   - The form transitions to `final_rendering`.
 
-#### Serialización de la interacción
+#### Interaction serialization
 
-Para un form con hijos interactivos `child-1`, `child-2`, ..., `child-n` con valores `v1`, `v2`, ..., `vn`:
-
-```
-[[INTERACTION id="form-id" child-1="v1" child-2="v2" ... child-n="vn"]]
-```
-
-**Reglas precisas:**
-
-- **Siempre se incluyen todos** los hijos interactivos del form, incluso si están `disabled`, `readonly`, o el usuario no los tocó (en cuyo caso el valor es la cadena vacía `""` o el `value` inicial declarado por el agente).
-- El **nombre del atributo** es el `id` del hijo. El **valor** es el valor capturado, URL-codificado según §7.2 cuando provenga de texto libre del usuario.
-- Para `choice multi="true"`, los ids seleccionados se serializan **separados por coma** dentro del valor (igual que un choice standalone): `dias="lun,mar,mie"`.
-- Para `toggle`, el valor es `value-on` o `value-off` según corresponda (default `"true"` / `"false"`).
-- El orden de los atributos en la serialización debe respetar el orden de los hijos en el form (recomendación de legibilidad; no es semántico).
-
-#### IDs reservados
-
-Los hijos interactivos de un `form` **no pueden** declarar:
-
-- `id="id"` — colisiona con el `id` del form en el bracket de interacción.
-- `id="value"` — palabra reservada del modo single-value de §7.1 (evita ambigüedad de parsing).
-
-El renderer debe rechazar (renderizar como texto plano) cualquier form con hijos que infrinjan esta regla.
-
-#### Ejemplo: registro de usuario
+For a form with interactive children `child-1`, `child-2`, ..., `child-n` with values `v1`, `v2`, ..., `vn`:
 
 ```
-[PML:form id="registro" submit-label="Crear cuenta"]
-  [PML:text type="header" style="bold"]Crea tu cuenta[/PML:text]
+[[INTERACTION id="form-id" field-child-1="v1" field-child-2="v2" ... field-child-n="vn"]]
+```
 
-  [PML:input id="nombre" type="text" label="Nombre completo"
+**Precise rules:**
+
+- **Each interactive child of the form contributes exactly one attribute** prefixed with `field-` to the bracket. The suffix is the child's declared `id`. The **value** is the captured value, URL-encoded per §7.2 when it comes from free user text.
+- **All interactive children are always included**, even if they are `disabled`, `readonly`, or the user did not touch them (in which case the value is the empty string `""` or the initial `value` declared by the agent).
+- For `choice multi="true"`, selected ids are serialized **comma-separated** inside the value (same as a standalone choice): `field-days="mon,tue,wed"`.
+- For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
+- The order of the attributes in the serialization should respect the order of the children in the form (legibility recommendation; not semantic).
+- **There are no forbidden IDs in form children.** Declarative IDs live in their own namespace: `id="id"`, `id="value"`, `id="error"` are valid because they serialize to `field-id`, `field-value`, `field-error`, without colliding with the reserved bracket names (`id`, `value`).
+
+#### Bracket namespaces
+
+| Bracket attribute        | Meaning                                                            |
+| ------------------------ | ------------------------------------------------------------------ |
+| `id`                     | Identifies the root component that originated the interaction.    |
+| `value`                  | (Single-value mode) Value captured from an atomic component.      |
+| `field-<sub-id>`         | (Multi-field mode) Value captured from the form's `<sub-id>` child. |
+| Other bare names         | Reserved for future metadata extensions. **Do not use.**          |
+
+> **Why the `field-` prefix.** v1.5 had chosen bare names (`name="..."`) for form fields, which forced marking `id` and `value` as forbidden IDs in children. v1.6 isolates the field space with the `field-` prefix: declarative IDs are free again and the bracket becomes self-describing (any `field-*` attribute is always a form field, regardless of the version of the agent that produced it).
+
+#### Example: user signup
+
+```
+[PML:form id="signup" submit-label="Create account"]
+  [PML:text type="header" style="bold"]Create your account[/PML:text]
+
+  [PML:input id="name" type="text" label="Full name"
     required="true" /]
 
   [PML:input id="email" type="text" label="Email"
     required="true"
     validate="^[^@]+@[^@]+\.[^@]+$"
-    error-message="Email inválido" /]
+    error-message="Invalid email" /]
 
-  [PML:input id="telefono" type="contact" label="Teléfono" /]
+  [PML:input id="phone" type="contact" label="Phone" /]
 
-  [PML:input id="fecha-nacimiento" type="date" label="Fecha de nacimiento"
+  [PML:input id="birth-date" type="date" label="Date of birth"
     required="true" /]
 
   [PML:choice id="plan" required="true"]
-    [PML:opt id="basico" value="Básico" /]
-    [PML:opt id="pro"    value="Pro"    /]
+    [PML:opt id="basic" value="Basic" /]
+    [PML:opt id="pro"   value="Pro"   /]
   [/PML:choice]
 
-  [PML:toggle id="acepta-terminos"
-    label="Acepto términos y condiciones" required="true" /]
+  [PML:toggle id="accept-terms"
+    label="I accept the terms and conditions" required="true" /]
 [/PML:form]
 ```
 
-**Submit válido — interacción generada:**
+**Valid submit — generated interaction:**
 
 ```
-[[INTERACTION id="registro"
-  nombre="Pedro+Garc%C3%ADa"
-  email="pedro%40ejemplo.com"
-  telefono="%2B5215512345678"
-  fecha-nacimiento="1990-03-15"
-  plan="pro"
-  acepta-terminos="true"]]
+[[INTERACTION id="signup"
+  field-name="John+Smith"
+  field-email="john%40example.com"
+  field-phone="%2B15551234567"
+  field-birth-date="1990-03-15"
+  field-plan="pro"
+  field-accept-terms="true"]]
 ```
 
-#### Validación servidor: re-render con errores
+#### Server validation: re-render with errors
 
-Cuando el backend rechaza el submit (p.ej. el email ya está registrado), el agente aplica la regla de actualización de estado de §7.6: re-emite el **mismo form con el mismo `id`**, preserva los valores previos vía el atributo `value` de cada hijo y añade `error="..."` al hijo fallido.
+When the backend rejects the submit (e.g. the email is already registered), the agent applies the state-update rule from §7.6: it re-emits the **same form with the same `id`**, preserves previous values via the `value` attribute on each child and adds `error="..."` on the failed child.
 
 ```
-[PML:form id="registro" submit-label="Crear cuenta"]
-  [PML:input id="nombre" type="text" label="Nombre completo"
-    value="Pedro García" required="true" /]
+[PML:form id="signup" submit-label="Create account"]
+  [PML:input id="name" type="text" label="Full name"
+    value="John Smith" required="true" /]
 
   [PML:input id="email" type="text" label="Email"
-    value="pedro@ejemplo.com"
+    value="john@example.com"
     validate="^[^@]+@[^@]+\.[^@]+$"
-    error="Este email ya está registrado" required="true" /]
+    error="This email is already registered" required="true" /]
 
-  [PML:input id="telefono" type="contact" label="Teléfono"
-    value="+52 555 123 4567" /]
+  [PML:input id="phone" type="contact" label="Phone"
+    value="+1 555 123 4567" /]
 
-  [PML:input id="fecha-nacimiento" type="date" label="Fecha de nacimiento"
+  [PML:input id="birth-date" type="date" label="Date of birth"
     value="1990-03-15" required="true" /]
 
   [PML:choice id="plan" required="true" value="pro"]
-    [PML:opt id="basico" value="Básico" /]
-    [PML:opt id="pro"    value="Pro"    /]
+    [PML:opt id="basic" value="Basic" /]
+    [PML:opt id="pro"   value="Pro"   /]
   [/PML:choice]
 
-  [PML:toggle id="acepta-terminos"
-    label="Acepto términos y condiciones" checked="true" required="true" /]
+  [PML:toggle id="accept-terms"
+    label="I accept the terms and conditions" checked="true" required="true" /]
 [/PML:form]
 ```
 
-La ChatApp detecta el mismo `id` y restaura la tarea a `live_capture` sin crear un nuevo bloque en `shared_history`.
+The ChatApp detects the same `id` and restores the task to `live_capture` without creating a new block in `shared_history`.
 
-#### Layout MVP
+#### MVP layout
 
 ```
 ┌─────────────────────────────┐
 │ task_controls               │
 │  ┌───────────────────────┐  │
-│  │ Crea tu cuenta        │  │ ← text header
+│  │ Create your account   │  │ ← text header
 │  │                       │  │
-│  │ Nombre completo       │  │ ← label
+│  │ Full name             │  │ ← label
 │  │ ┌───────────────────┐ │  │
 │  │ │                   │ │  │ ← input
 │  │ └───────────────────┘ │  │
 │  │                       │  │
 │  │ Email                 │  │
 │  │ ┌───────────────────┐ │  │
-│  │ │ pedro@e.com       │ │  │
+│  │ │ john@e.com        │ │  │
 │  │ └───────────────────┘ │  │
-│  │ Email inválido        │  │ ← error inline
+│  │ Invalid email         │  │ ← inline error
 │  │                       │  │
 │  │ Plan                  │  │
-│  │ [Básico] [Pro]        │  │ ← choice
+│  │ [Basic] [Pro]         │  │ ← choice
 │  │                       │  │
-│  │ ◉ Acepto términos     │  │ ← toggle
+│  │ ◉ Accept terms        │  │ ← toggle
 │  │                       │  │
 │  │ ┌───────────────────┐ │  │
-│  │ │   Crear cuenta    │ │  │ ← submit, full-width
+│  │ │  Create account   │ │  │ ← submit, full-width
 │  │ └───────────────────┘ │  │
 │  └───────────────────────┘  │
 └─────────────────────────────┘
 ```
 
-#### Lifecycle (zonas y fases)
+#### Lifecycle (zones and phases)
 
-El form es **una sola tarea**. Atraviesa el lifecycle completo igual que cualquier otro componente interactivo:
+The form is **a single task**. It goes through the full lifecycle like any other interactive component:
 
-| Fase              | Qué ocurre                                                                                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `first_rendering` | El form completo aparece en `task_controls`. Si el mensaje incluye narrativa **fuera** del form, esa narrativa va a `task_narrative`. Narrativa **dentro** del form se renderiza inline. |
-| `live_capture`    | El usuario edita libremente cualquier hijo interactivo. Los componentes individuales **no emiten** `[[INTERACTION]]`. La validación es inerte hasta el submit.            |
-| `final_rendering` | Tras submit válido, el form completo (con sus valores resueltos) se snapshotea inmutable en `shared_history`. `task_controls` y `task_narrative` se vacían.               |
+| Phase             | What happens                                                                                                                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `first_rendering` | The full form appears in `task_controls`. If the message includes narrative **outside** the form, that narrative goes to `task_narrative`. Narrative **inside** the form renders inline.                                       |
+| `live_capture`    | The user freely edits any interactive child. Individual components **do not emit** `[[INTERACTION]]`. Validation is inert until submit.                                                                                       |
+| `final_rendering` | After a valid submit, the full form (with its resolved values) is snapshotted immutably to `shared_history`. `task_controls` and `task_narrative` are emptied.                                                                |
 
-#### Casos borde
+#### Edge cases
 
-- **Form sin hijos interactivos** (solo narrativa + submit): es válido. La interacción emitida es `[[INTERACTION id="form-id"]]` sin atributos extra. Funciona como un CTA acoplado a narrativa.
-- **Hijo `disabled`**: se incluye en la interacción con su valor actual (el `value` inicial o vacío). El usuario no puede modificarlo, pero el agente recibe el valor para coherencia de campos.
-- **Hijo `readonly`**: igual que disabled en cuanto a serialización; visualmente se muestra editable pero no acepta cambios.
-- **Hijo sin valor inicial y opcional**: se incluye con valor `""` en la serialización.
-- **IDs duplicados entre hijos**: el renderer aplica las reglas de §8.3 (renderiza el primero, ignora los demás; el segundo no contribuye a la interacción).
-- **Hijo prohibido detectado** (ej. `confirm`, `dtable`, `form` anidado): el renderer lo trata como texto plano y lo omite de la interacción. Loggea warning.
-- **Submit con cero hijos interactivos válidos**: la validación pasa trivialmente; se emite `[[INTERACTION id="form-id"]]`.
+- **Form with no interactive children** (only narrative + submit): is valid. The emitted interaction is `[[INTERACTION id="form-id"]]` with no `field-*` attributes. Works as a CTA coupled to narrative.
+- **`disabled` child**: is included in the interaction with its current value (the initial `value` or empty). The user cannot modify it, but the agent receives the value for field consistency.
+- **`readonly` child**: same as disabled regarding serialization; visually it appears editable but does not accept changes.
+- **Optional child with no initial value**: is included with value `""` in the serialization.
+- **Duplicate IDs across children**: the renderer applies the rules from §8.3 (renders the first, ignores the rest; the second does not contribute to the interaction).
+- **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`): the renderer treats it as plain text and omits it from the interaction. Logs a warning.
+- **Submit with zero valid interactive children**: validation passes trivially; `[[INTERACTION id="form-id"]]` is emitted.
+- **v1.5 ↔ v1.6 compatibility**: a v1.6 renderer accepts brackets without a prefix (v1.5 format) during the transition period and processes them as if they carried an implicit `field-`. A v1.5 agent sent to a v1.6 renderer still works. A v1.6 agent sent to a v1.5 renderer emits `field-*` attributes that the v1.5 renderer silently ignores ("unknown attributes are dropped" rule); the agent receives the degraded interaction without fields. For maximum compatibility, the agent should negotiate version via the envelope metadata before choosing the format to emit.
 
 ---
 
-## 7. Modelo de interacción
+## 7. Interaction model
 
-Una **interacción** es el resultado serializado de una acción del usuario sobre un componente interactivo. La ChatApp produce la interacción y la envía al Agente PML, que la interpreta y genera la siguiente respuesta.
+An **interaction** is the serialized result of a user action on an interactive component. The ChatApp produces the interaction and sends it to the PML Agent, which interprets it and generates the next response.
 
-### 7.1 Formato de la interacción
+### 7.1 Interaction format
 
 ```
 [[INTERACTION id="component-id" value="user-value"]]
 ```
 
-**Reglas léxicas:**
+**Lexical rules:**
 
-- Delimitadores: doble corchete de apertura `[[INTERACTION` y doble corchete de cierre `]]`.
-- Los atributos siguen la misma sintaxis que los atributos de PML: `nombre="valor"`, con comillas dobles preferidas (o simples).
-- El atributo `id` es **siempre obligatorio** y referencia el `id` del componente que originó la interacción.
-- El atributo `value` contiene el valor capturado del usuario (URL-codificado según §7.2).
-- El bracket `[[INTERACTION ...]]` se trata como un componente sintáctico atómico: sin contenido hijo, sin etiqueta de cierre `[[/INTERACTION]]` para el caso de un único valor.
+- Delimiters: opening double bracket `[[INTERACTION` and closing double bracket `]]`.
+- Attributes follow the same syntax as PML attributes: `name="value"`, with double quotes preferred (or single).
+- The `id` attribute is **always required** and references the `id` of the component that originated the interaction.
+- The `value` attribute contains the user's captured value (URL-encoded per §7.2).
+- The bracket `[[INTERACTION ...]]` is treated as an atomic syntactic component: no child content, no closing tag `[[/INTERACTION]]` for the single-value case.
 
-**Mensaje completo del lado del usuario:** una interacción puede aparecer sola en el mensaje, o intercalada con texto plano si el usuario también escribió algo (caso poco frecuente; el patrón normal es una interacción aislada).
+**Full user-side message:** an interaction may appear alone in the message, or interspersed with plain text if the user also typed something (rare; the normal pattern is an isolated interaction).
 
-### 7.2 URL encoding de valores
+### 7.2 URL encoding of values
 
-Cuando la ChatApp envía valores que provienen de **texto libre del usuario**, aplica URL encoding (RFC 3986 + `+` para espacios, estilo `application/x-www-form-urlencoded`).
+When the ChatApp sends values that come from **free user text**, it applies URL encoding (RFC 3986 + `+` for spaces, `application/x-www-form-urlencoded` style).
 
-| Carácter | Codificación |
-| -------- | ------------ |
-| espacio  | `+`          |
-| `&`      | `%26`        |
-| `=`      | `%3D`        |
-| `"`      | `%22`        |
-| `'`      | `%27`        |
-| `+`      | `%2B`        |
-| `%`      | `%25`        |
-| `\n`     | `%0A`        |
-| `\r`     | `%0D`        |
-| `[`      | `%5B`        |
-| `]`      | `%5D`        |
+| Character | Encoding |
+| --------- | -------- |
+| space     | `+`      |
+| `&`       | `%26`    |
+| `=`       | `%3D`    |
+| `"`       | `%22`    |
+| `'`       | `%27`    |
+| `+`       | `%2B`    |
+| `%`       | `%25`    |
+| `\n`      | `%0A`    |
+| `\r`      | `%0D`    |
+| `[`       | `%5B`    |
+| `]`       | `%5D`    |
 
-**Se codifica:** valores capturados como texto libre del usuario (`input type="text"`, multilínea, etc.).
+**Encoded:** values captured as free user text (`input type="text"`, multi-line, etc.).
 
-**No se codifica:**
+**Not encoded:**
 
-- `id` de cualquier atributo en la interacción (siempre `kebab-case` ASCII).
-- Valores `value` que provienen de IDs predefinidos por el agente o la ChatApp (opciones de `choice`, valores `confirmed`/`cancelled` de `confirm`, `true`/`false` o custom de `toggle`).
-- Valores generados por sensores o el sistema (coordenadas GPS, ISO 8601 de fechas, URLs de archivos).
-- Números (`input type="number"`, `currency`).
+- `id` of any attribute in the interaction (always `kebab-case` ASCII).
+- `value` values that come from IDs predefined by the agent or ChatApp (`choice` options, `confirmed`/`cancelled` values from `confirm`, `true`/`false` or custom from `toggle`).
+- Values generated by sensors or the system (GPS coordinates, ISO 8601 dates, file URLs).
+- Numbers (`input type="number"`, `currency`).
 
-**Caracteres UTF-8 no-ASCII** (acentos, ñ, emojis, etc.): se codifican como bytes UTF-8 en hexadecimal (`%XX`). Ej: `María` → `Mar%C3%ADa`.
+**Non-ASCII UTF-8 characters** (accents, ñ, emojis, etc.): encoded as UTF-8 bytes in hexadecimal (`%XX`). E.g.: `María` → `Mar%C3%ADa`.
 
-**Nota para el Agente (LLM):** el prompt del sistema debe instruir explícitamente al agente para **decodificar** los valores URL-encoded antes de procesarlos semánticamente.
+**Note for the Agent (LLM):** the system prompt must explicitly instruct the agent to **decode** URL-encoded values before processing them semantically.
 
-**Ejemplo:**
-
-```
-Usuario escribe:  Pedro & María
-ChatApp envía:    [[INTERACTION id="nombre" value="Pedro+%26+Mar%C3%ADa"]]
-Agente decodifica: "Pedro & María"
-```
-
-### 7.3 Interacciones multi-campo
-
-El formato `[[INTERACTION id="..." value="..."]]` se extiende **de forma natural** a componentes que capturan múltiples campos en una sola acción. La regla generativa es:
-
-> El bracket `[[INTERACTION ...]]` admite **cualquier número de atributos nombrados** además de `id`. Cada atributo adicional corresponde a un campo del componente compuesto, identificado por el `id` del sub-componente.
-
-**Forma canónica (un solo valor — input, choice, toggle, confirm):**
+**Example:**
 
 ```
-[[INTERACTION id="nombre" value="Pedro"]]
+User types:        Pedro & María
+ChatApp sends:     [[INTERACTION id="name" value="Pedro+%26+Mar%C3%ADa"]]
+Agent decodes:     "Pedro & María"
 ```
 
-**Forma multi-campo (form, §6.5):**
+### 7.3 Multi-field interactions
+
+The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to components that capture multiple fields in a single action. The v1.6 generative rule is:
+
+> The bracket `[[INTERACTION ...]]` admits **any number of `field-<sub-id>` attributes** in addition to `id`. Each `field-*` attribute corresponds to a field of the compound component: the suffix is the sub-component's `id`, the value is the captured data.
+
+**Canonical form (single value — input, choice, toggle, confirm):**
+
+```
+[[INTERACTION id="name" value="Pedro"]]
+```
+
+**Multi-field form (form, §6.5):**
 
 ```
 [[INTERACTION id="form-checkout"
-  nombre="Pedro+Garc%C3%ADa"
-  email="pedro%40e.com"
-  telefono="%2B5215512345678"
-  acepta-terminos="true"]]
+  field-name="John+Smith"
+  field-email="john%40e.com"
+  field-phone="%2B15551234567"
+  field-accept-terms="true"]]
 ```
 
-**Propiedades del diseño:**
+**Design properties:**
 
-| Propiedad         | Explicación                                                                                                                                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Sin JSON**      | Solo la sintaxis de atributos `nombre="valor"`, idéntica a la de PML. Ningún nivel de objeto ni array.                                                 |
-| **Sin anidación** | Toda la interacción vive en una sola línea lógica. No hay `[[FIELD ...]]` ni etiquetas de cierre.                                                      |
-| **Compatible**    | Un parser que solo entienda `id` + `value` puede ignorar atributos adicionales y procesar el caso simple sin cambios.                                  |
-| **Determinista**  | Los nombres de los atributos son los `id` de los sub-componentes, no posiciones; el orden no es semántico.                                             |
-| **Reservados**    | `id` está reservado para el componente raíz. `value` está reservado para el modo single-value y **no debe** usarse como nombre de campo en modo multi. |
+| Property              | Explanation                                                                                                                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **No JSON**           | Only `name="value"` attribute syntax, identical to PML's. No object or array level.                                                                                                                                                                    |
+| **No nesting**        | The entire interaction lives on a single logical line. No `[[FIELD ...]]` or closing tags.                                                                                                                                                             |
+| **Compatible**        | A parser that only understands `id` + `value` can ignore `field-*` attributes and process the simple case unchanged. v1.6 → v1.5: silent ignore. v1.5 → v1.6: the v1.6 renderer accepts unprefixed attributes as a temporary alias.                    |
+| **Deterministic**     | Field names are `field-<sub-id>`, where `<sub-id>` is the sub-component's `id`. There are no positions; order is not semantic.                                                                                                                         |
+| **Isolated spaces**   | `id` and `value` are bracket metadata. Fields live exclusively in the `field-*` namespace. This separation eliminates the reserved words that v1.5 imposed on child IDs.                                                                              |
 
-**Reglas para el caso multi-campo:**
+**Rules for the multi-field case:**
 
-1. `id` siempre apunta al componente raíz (ej. el formulario).
-2. Cada atributo adicional usa el `id` de su sub-componente como nombre.
-3. Los valores siguen las mismas reglas de URL encoding de §7.2.
-4. Si un sub-componente devuelve múltiples selecciones (un `choice multi="true"` embebido), su valor se serializa con coma: `dias="lun,mar,mie"`.
+1. `id` always points to the root component (e.g. the form).
+2. Each field of the compound component is serialized as `field-<sub-id>="<value>"`. The `<sub-id>` is the declarative `id` of the child, untransformed.
+3. Values follow the same URL encoding rules of §7.2.
+4. If a sub-component returns multiple selections (an embedded `choice multi="true"`), its value is serialized with commas: `field-days="mon,tue,wed"`.
+5. **No forbidden names** for child IDs: the `field-*` namespace isolates data from bracket metadata.
 
-> **v1.5 introduce el componente `form` (§6.5)**, primer consumidor del formato multi-campo. v1.4 había fijado el contrato del bracket precisamente para que la llegada de `form` no exigiera ninguna migración disruptiva en agentes o renderers que ya entendieran el formato `id + value`.
+> **v1.5 ↔ v1.6 compatibility.** v1.5 had introduced the `form` component emitting fields as bare attributes (`name="..."`), reserving the names `id` and `value`. v1.6 isolates them under the `field-*` prefix and removes the reservation. v1.6 renderers accept both formats during the transition; v1.6 agents always emit with the prefix. See Appendix E.
 
-### 7.4 Flujo de conversación
-
-```
-1. La ChatApp renderiza el mensaje inicial del Agente PML (obtenido del agent-spec).
-2. El usuario produce input (texto libre, toque en componente, etc.).
-3. La ChatApp captura la acción, la serializa como [[INTERACTION ...]] y la envía al agente.
-4. El Agente PML procesa la interacción y genera una nueva respuesta PML.
-5. La ChatApp parsea la respuesta y renderiza los componentes.
-6. Vuelve al paso 2.
-```
-
-Este ciclo se repite indefinidamente y se conoce como **conversación**.
-
-### 7.5 Ejemplo de conversación completa
+### 7.4 Conversation flow
 
 ```
-USUARIO: [[INTERACTION id="user-init" value="Quiero+comprar+unos+zapatos"]]
-
-AGENTE: ¡Perfecto! Tenemos varios modelos disponibles.
-
-        [PML:image url="https://cdn.peppo.com/catalogo.jpg"
-          alt="Catálogo de zapatos" size="full" /]
-
-        ¿Cuál te interesa?
-
-        [PML:choice id="catalogo"]
-          [PML:opt id="nike"   value="Nike Air Max — $2,499"      /]
-          [PML:opt id="adidas" value="Adidas Ultraboost — $3,199" /]
-        [/PML:choice]
-
---- El usuario toca "Nike Air Max ..." ---
-
-USUARIO: [[INTERACTION id="catalogo" value="nike"]]
-
-AGENTE: Excelente elección. ¿Qué talla necesitas?
-
-        [PML:choice id="talla" style="buttons"]
-          [PML:opt value="38" /]
-          [PML:opt value="39" /]
-          [PML:opt value="40" /]
-          [PML:opt value="41" /]
-          [PML:opt value="42" /]
-          [PML:opt value="43" /]
-        [/PML:choice]
-
---- El usuario selecciona "42" ---
-
-USUARIO: [[INTERACTION id="talla" value="42"]]
-
-AGENTE: Nike Air Max, talla 42. Para completar tu compra
-        necesito tus datos. Cuando estés listo:
-
-        [PML:choice id="start-checkout"]
-          [PML:opt id="start" value="Completar datos" /]
-        [/PML:choice]
-
---- El usuario toca el botón ---
-
-USUARIO: [[INTERACTION id="start-checkout" value="start"]]
-
-AGENTE: ¡Listo, Pedro! Aquí está tu resumen:
-
-        [PML:facts columns="2"]
-          [PML:fact label="Producto"         value="Nike Air Max 90"        /]
-          [PML:fact label="Talla"            value="42"                     /]
-          [PML:fact label="Precio"           value="$2,499 MXN"             /]
-          [PML:fact label="Envío"            value="Gratis"                 /]
-          [PML:fact label="Nombre"           value="Pedro García"           /]
-          [PML:fact label="Dirección"        value="Reforma 123, CDMX"      /]
-          [PML:fact label="Teléfono"         value="+52 555 123 4567"       /]
-          [PML:fact label="Entrega estimada" value="3-5 días hábiles"       /]
-        [/PML:facts]
-
-        [PML:choice id="post-compra"]
-          [PML:opt id="track"    value="Rastrear pedido"  /]
-          [PML:opt id="continue" value="Seguir comprando" /]
-        [/PML:choice]
+1. The ChatApp renders the initial PML Agent message (obtained from the agent-spec).
+2. The user produces input (free text, tap on component, etc.).
+3. The ChatApp captures the action, serializes it as [[INTERACTION ...]] and sends it to the agent.
+4. The PML Agent processes the interaction and generates a new PML response.
+5. The ChatApp parses the response and renders the components.
+6. Returns to step 2.
 ```
 
-### 7.6 Actualización de estado
+This cycle repeats indefinitely and is known as a **conversation**.
 
-Cuando el Agente PML valida una interacción en el backend y determina que es inválida (código de descuento incorrecto, usuario duplicado, etc.), puede emitir un nuevo mensaje conteniendo **el mismo componente interactivo con el mismo `id`** que la interacción inmediata anterior, agregando el atributo `error="Mensaje"`.
-
-En este escenario, la ChatApp **no crea un nuevo bloque** en el historial compartido: el renderer detecta que se trata de la misma tarea y restaura la fase de captura, actualizando el componente visual con el mensaje de error. Esta _actualización de estado_ previene que la conversación se llene de intentos fallidos repetidos.
-
-**Ejemplo:**
-
-Agente emite originalmente:
+### 7.5 Full conversation example
 
 ```
-[PML:input id="codigo" type="text" label="Código de descuento" /]
+USER: [[INTERACTION id="user-init" value="I+want+to+buy+some+shoes"]]
+
+AGENT: Great! We have several models available.
+
+       [PML:image url="https://cdn.peppo.com/catalog.jpg"
+         alt="Shoe catalog" size="full" /]
+
+       Which one interests you?
+
+       [PML:choice id="catalog"]
+         [PML:opt id="nike"   value="Nike Air Max — $129"      /]
+         [PML:opt id="adidas" value="Adidas Ultraboost — $169" /]
+       [/PML:choice]
+
+--- The user taps "Nike Air Max ..." ---
+
+USER: [[INTERACTION id="catalog" value="nike"]]
+
+AGENT: Excellent choice. What size do you need?
+
+       [PML:choice id="size" style="buttons"]
+         [PML:opt value="7"  /]
+         [PML:opt value="8"  /]
+         [PML:opt value="9"  /]
+         [PML:opt value="10" /]
+         [PML:opt value="11" /]
+         [PML:opt value="12" /]
+       [/PML:choice]
+
+--- The user selects "10" ---
+
+USER: [[INTERACTION id="size" value="10"]]
+
+AGENT: Nike Air Max, size 10. To complete your purchase
+       I need your details. When you're ready:
+
+       [PML:choice id="start-checkout"]
+         [PML:opt id="start" value="Fill in details" /]
+       [/PML:choice]
+
+--- The user taps the button ---
+
+USER: [[INTERACTION id="start-checkout" value="start"]]
+
+AGENT: Done, John! Here's your summary:
+
+       [PML:facts columns="2"]
+         [PML:fact label="Product"          value="Nike Air Max 90"         /]
+         [PML:fact label="Size"             value="10"                      /]
+         [PML:fact label="Price"            value="$129 USD"                /]
+         [PML:fact label="Shipping"         value="Free"                    /]
+         [PML:fact label="Name"             value="John Smith"              /]
+         [PML:fact label="Address"          value="123 Main St, New York"   /]
+         [PML:fact label="Phone"            value="+1 555 123 4567"         /]
+         [PML:fact label="Estimated delivery" value="3-5 business days"     /]
+       [/PML:facts]
+
+       [PML:choice id="post-purchase"]
+         [PML:opt id="track"    value="Track order"   /]
+         [PML:opt id="continue" value="Keep shopping" /]
+       [/PML:choice]
 ```
 
-Usuario envía:
+### 7.6 State update
+
+When the PML Agent validates an interaction in the backend and determines it is invalid (incorrect discount code, duplicate user, etc.), it can emit a new message containing **the same interactive component with the same `id`** as the immediately previous interaction, adding the `error="Message"` attribute.
+
+In this scenario, the ChatApp **does not create a new block** in the shared history: the renderer detects that this is the same task and restores the capture phase, updating the visual component with the error message. This _state update_ prevents the conversation from filling up with repeated failed attempts.
+
+**Example:**
+
+The agent originally emits:
 
 ```
-[[INTERACTION id="codigo" value="ABC123"]]
+[PML:input id="code" type="text" label="Discount code" /]
 ```
 
-Backend rechaza. Agente emite:
+The user sends:
 
 ```
-[PML:input id="codigo" type="text" label="Código de descuento"
-  value="ABC123" error="Código inválido. Verifica e intenta de nuevo." /]
+[[INTERACTION id="code" value="ABC123"]]
 ```
 
-El renderer actualiza el mismo componente en lugar de agregar uno nuevo.
+The backend rejects it. The agent emits:
+
+```
+[PML:input id="code" type="text" label="Discount code"
+  value="ABC123" error="Invalid code. Verify and try again." /]
+```
+
+The renderer updates the same component instead of adding a new one.
 
 ---
 
-## 8. Reglas de composición
+## 8. Composition rules
 
-### 8.1 Tabla de anidación permitida
+### 8.1 Permitted nesting table
 
-| Contenedor         | Puede contener directamente                                                                                |
-| ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| (raíz del mensaje) | Cualquier componente standalone                                                                            |
-| `form`             | Pasivos simples (`text`, `markdown`, `divider`, `image`, `media`, `raw`), `facts`, `input`, `toggle`, `choice` |
-| `choice`           | `opt` (uno o más)                                                                                          |
-| `facts`            | `fact` (uno o más)                                                                                         |
-| `dtable`           | `dtrow` (uno o más)                                                                                        |
-| `dtrow`            | `dtcol` (uno o más)                                                                                        |
-| `raw`              | Texto plano (parser desactivado)                                                                           |
-| `text`, `markdown` | Texto (sin componentes anidados)                                                                           |
+| Container            | May directly contain                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| (message root)       | Any standalone component                                                                                        |
+| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `raw`), `facts`, `input`, `toggle`, `choice`  |
+| `choice`             | `opt` (one or more)                                                                                             |
+| `facts`              | `fact` (one or more)                                                                                            |
+| `dtable`             | `dtrow` (one or more)                                                                                           |
+| `dtrow`              | `dtcol` (one or more)                                                                                           |
+| `raw`                | Plain text (parser disabled)                                                                                    |
+| `text`, `markdown`   | Text (no nested components)                                                                                     |
 
-### 8.2 Reglas de anidación
+### 8.2 Nesting rules
 
-1. **Profundidad máxima: 3 niveles**, dada por las cadenas `dtable > dtrow > dtcol`, `choice > opt`, `facts > fact`, `form > choice > opt` y `form > facts > fact`.
-2. Los componentes interactivos **no anidan otros interactivos**, salvo `form`, que es contenedor explícito de interactivos hijos.
-3. Los componentes pasivos no anidan componentes (excepto los pares contenedor/hijo del cuadro de arriba).
-4. `form` **no admite**: `dtable` (excedería profundidad 3), `confirm` (modal incompatible con submit unificado) ni `form` anidado.
-5. Dentro de un `form`, los `id` de los hijos interactivos **no pueden ser `id` ni `value`** (palabras reservadas del bracket `[[INTERACTION]]`).
+1. **Maximum depth: 3 levels**, given by the chains `dtable > dtrow > dtcol`, `choice > opt`, `facts > fact`, `form > choice > opt`, and `form > facts > fact`.
+2. Interactive components **do not nest other interactives**, except for `form`, which is the explicit container of interactive children.
+3. Passive components do not nest components (except for the container/child pairs in the table above).
+4. `form` **does not allow**: `dtable` (would exceed depth 3), `confirm` (modal incompatible with unified submit), or nested `form`.
+5. **(v1.6)** There are no forbidden names for the `id`s of form children. The `field-*` prefix of the multi-field bracket (§7.3) isolates the field namespace from the metadata one, so `id="id"`, `id="value"` or `id="error"` on children are valid and serialize to `field-id`, `field-value`, `field-error`. This repeals the v1.5 reserved-IDs rule.
 
-### 8.3 Reglas de IDs
+### 8.3 ID rules
 
-- Únicos dentro de un mensaje.
-- Formato: `kebab-case` (`[a-z][a-z0-9-]*`).
-- No espacios, no caracteres especiales, no inician con dígito.
-- IDs duplicados: renderizar el primero, loggear warning, ignorar los demás.
-
----
-
-## 9. Guías para LLMs / Agentes
-
-### 9.1 Reglas obligatorias
-
-1. **Siempre** incluir `id` en todo componente interactivo.
-2. **Siempre** usar comillas en los valores de atributos (`atributo="valor"`).
-3. **Nunca** usar JSON, `< >`, ni HTML para componentes.
-4. **Nunca** usar `camelCase` en nombres de atributos; usar `kebab-case` o `lowercase`.
-5. **Siempre** terminar autofinalizados con ` /]` (con espacio).
-6. **Siempre** cerrar contenedores con `[/PML:tipo]`.
-7. Al recibir `[[INTERACTION ...]]`, decodificar los valores URL-encoded **antes** de razonar sobre ellos.
-8. **En `form`**: dar `id` único a cada hijo interactivo (será el nombre del atributo en la interacción); nunca usar `id="id"` ni `id="value"`; nunca anidar `confirm`, `dtable` ni otro `form`.
-9. **Al re-emitir un `form`** tras error de servidor: usar el mismo `id` del form y poblar `value="..."` en cada hijo con el último valor conocido del usuario; añadir `error="..."` solo en los hijos fallidos (§7.6).
-
-### 9.2 Generación tolerante a errores
-
-Los renderers deben aplicar las siguientes políticas cuando reciban PML imperfecto:
-
-| Error del agente             | Comportamiento del renderer                     |
-| ---------------------------- | ----------------------------------------------- |
-| Falta `id` en interactivo    | Generar `auto-{tipo}-{n}` y loggear warning     |
-| Atributo desconocido         | Ignorar silenciosamente                         |
-| Atributo en `camelCase`      | Aceptar como alias del `kebab-case` equivalente |
-| Tag sin cerrar               | Intentar autocerrar; si no es posible, truncar  |
-| Componente hijo no permitido | Renderizar como texto plano                     |
-| ID duplicado                 | Renderizar el primero, ignorar los demás        |
-| Profundidad > 3              | Aplanar al nivel 3                              |
+- Unique within a message.
+- Format: `kebab-case` (`[a-z][a-z0-9-]*`).
+- No spaces, no special characters, must not start with a digit.
+- Duplicate IDs: render the first, log a warning, ignore the rest.
 
 ---
 
-## 10. Guías de UX para móviles del ChatApp
+## 9. Guidelines for LLMs / Agents
 
-### 10.1 Principios
+### 9.1 Required rules
+
+1. **Always** include `id` on every interactive component.
+2. **Always** use quotes on attribute values (`attribute="value"`).
+3. **Never** use JSON, `< >`, or HTML for components.
+4. **Never** use `camelCase` in attribute names; use `kebab-case` or `lowercase`.
+5. **Always** end self-closing components with ` /]` (with space).
+6. **Always** close containers with `[/PML:type]`.
+7. When receiving `[[INTERACTION ...]]`, decode the URL-encoded values **before** reasoning about them. In multi-field mode, read the `field-<sub-id>` attributes ignoring the `field-` prefix to map to the child's `id` in the form.
+8. **In `form`**: give a unique `id` to each interactive child (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`. **(v1.6)** Child IDs are free: there are no reserved names anymore.
+9. **When re-emitting a `form`** after a server error: use the same `id` of the form and populate `value="..."` on each child with the last known user value; add `error="..."` only on failed children (§7.6).
+10. **When emitting multi-field interactions (v1.6)**: always use the `field-` prefix in the bracket attribute names (`field-name="..."`, not `name="..."`). The unprefixed v1.5 format is deprecated and v1.6 renderers accept it only as a temporary alias.
+
+### 9.2 Error-tolerant generation
+
+Renderers should apply the following policies when receiving imperfect PML:
+
+| Agent error                   | Renderer behavior                                |
+| ----------------------------- | ------------------------------------------------ |
+| Missing `id` on interactive   | Generate `auto-{type}-{n}` and log warning       |
+| Unknown attribute             | Ignore silently                                  |
+| Attribute in `camelCase`      | Accept as alias of the `kebab-case` equivalent   |
+| Unclosed tag                  | Try to auto-close; if not possible, truncate     |
+| Non-permitted child component | Render as plain text                             |
+| Duplicate ID                  | Render the first, ignore the rest                |
+| Depth > 3                     | Flatten to level 3                               |
+
+---
+
+## 10. Mobile UX guidelines for the ChatApp
+
+### 10.1 Principles
 
 ```
-1. EL CHAT INPUT ES SAGRADO
-   El composer de texto está disponible en todo momento, salvo cuando un componente
-   PML interactivo exige exclusividad (confirm modal, file picker). Se restaura
-   inmediatamente al cerrar la tarea.
+1. THE CHAT INPUT IS SACRED
+   The text composer is available at all times, except when an interactive
+   PML component requires exclusivity (confirm modal, file picker). It is
+   restored immediately when the task closes.
 
-2. NADA SE PIERDE
-   Los datos enviados quedan como resumen inline en el historial compartido.
+2. NOTHING IS LOST
+   Submitted data remains as an inline summary in the shared history.
 
-3. LA INTERACCIÓN ES PRIORITARIA
-   El componente PML de interacción es el protagonista de la pantalla; ocupa el
-   lugar preferente del layout y debe ser fácilmente interactuable.
+3. INTERACTION IS PRIORITARY
+   The interactive PML component is the protagonist of the screen; it occupies
+   the preferred slot in the layout and must be easily interactable.
 
-4. MÁXIMO 1 INTERACCIÓN POR TURNO
-   Solo puede haber un componente interactivo activo por conversación
-   por usuario disparador en un momento dado.
+4. MAXIMUM 1 INTERACTION PER TURN
+   There can only be one interactive component active per conversation
+   per triggering user at any given moment.
 
-5. CONVERSACIONES MULTIUSUARIO
-   Toda conversación se diseña como potencialmente grupal. Cada participante puede
-   tener su propia tarea privada, visible solo para él, mediante zonas
-   diferenciadas del ChatApp.
+5. MULTI-USER CONVERSATIONS
+   Every conversation is designed as potentially group-based. Each participant
+   may have their own private task, visible only to them, via differentiated
+   ChatApp zones.
 ```
 
-### 10.2 Zonas y fases del renderer
+### 10.2 Renderer zones and phases
 
-Esta subsección define el **modelo canónico** que el ChatApp usa para renderizar un mensaje PML en una pantalla de móvil.
+This subsection defines the **canonical model** the ChatApp uses to render a PML message on a mobile screen.
 
-La restricción de espacio del dispositivo obliga a optimizar el uso de la pantalla, para evitar que los componentes de interacción compitan con el chat input y con los mensajes.
+The device's screen-space constraint forces optimization of screen usage, to avoid interaction components competing with the chat input and the messages.
 
-#### 10.2.1 Tres zonas
+#### 10.2.1 Three zones
 
-| Zona             | Visibilidad             | Persistencia          | Interactiva | Contenido                                                     |
-| ---------------- | ----------------------- | --------------------- | ----------- | ------------------------------------------------------------- |
-| `shared_history` | Todos los participantes | Permanente, inmutable | No          | Mensajes pasados, narrativa, snapshots de tareas resueltas    |
-| `task_narrative` | Privada al disparador   | Efímera               | No          | Narrativa que enmarca la tarea en curso (componentes pasivos) |
-| `task_controls`  | Privada al disparador   | Efímera               | Sí          | El componente interactivo de la tarea (único por turno)       |
+| Zone             | Visibility           | Persistence           | Interactive | Content                                                       |
+| ---------------- | -------------------- | --------------------- | ----------- | ------------------------------------------------------------- |
+| `shared_history` | All participants     | Permanent, immutable  | No          | Past messages, narrative, snapshots of resolved tasks         |
+| `task_narrative` | Private to triggerer | Ephemeral             | No          | Narrative that frames the current task (passive components)   |
+| `task_controls`  | Private to triggerer | Ephemeral             | Yes         | The task's interactive component (single per turn)            |
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │   shared_history                                         │    │
-│  │   (compartido · inmutable · scrollable)                  │    │
-│  │   Mensajes pasados, snapshots de tareas resueltas        │    │
+│  │   (shared · immutable · scrollable)                      │    │
+│  │   Past messages, snapshots of resolved tasks             │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │   task_narrative                                         │    │
-│  │   (privado · efímero)                                    │    │
-│  │   Pregunta, encabezado, contexto que enmarca la tarea    │    │
-│  │   Componentes pasivos (text, markdown, image, ...)       │    │
+│  │   (private · ephemeral)                                  │    │
+│  │   Question, header, context framing the task             │    │
+│  │   Passive components (text, markdown, image, ...)        │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │   task_controls                                          │    │
-│  │   (privado · efímero · interactivo · único por turno)    │    │
-│  │   El componente interactivo que espera respuesta:        │    │
-│  │   input, toggle, choice o confirm                        │    │
+│  │   (private · ephemeral · interactive · single per turn)  │    │
+│  │   The interactive component awaiting response:           │    │
+│  │   input, toggle, choice, or confirm                      │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Reglas:**
+**Rules:**
 
-- Solo `shared_history` es persistente y visible para todos los participantes.
-- `task_narrative` y `task_controls` son privados al disparador y efímeros.
-- Solo puede haber **un `task_controls`** activo por conversación por usuario disparador.
-- Las zonas `task_*` no se anidan, no se apilan, no permiten scroll independiente.
+- Only `shared_history` is persistent and visible to all participants.
+- `task_narrative` and `task_controls` are private to the triggerer and ephemeral.
+- There can only be **one `task_controls`** active per conversation per triggering user.
+- The `task_*` zones do not nest, do not stack, do not allow independent scrolling.
 
-#### 10.2.2 Tres fases del ciclo de vida
+#### 10.2.2 Three lifecycle phases
 
-| Fase              | Quién la dispara             | Qué ocurre                                                                                                                                 |
-| ----------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `first_rendering` | El agente (emite el mensaje) | La narrativa pinta en `task_narrative`; los controles en `task_controls`. Privado al disparador.                                           |
-| `live_capture`    | El usuario disparador        | El usuario interactúa con los controles. Feedback visual en `task_controls`. Sigue privado.                                                |
-| `final_rendering` | La ChatApp                   | La tarea cierra. Snapshot inmutable de narrativa + resultado se promueve a `shared_history`. `task_narrative` y `task_controls` se vacían. |
+| Phase             | Who triggers it             | What happens                                                                                                                                          |
+| ----------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `first_rendering` | The agent (emits the message) | Narrative paints in `task_narrative`; controls in `task_controls`. Private to the triggerer.                                                          |
+| `live_capture`    | The triggering user         | The user interacts with the controls. Visual feedback in `task_controls`. Still private.                                                              |
+| `final_rendering` | The ChatApp                 | The task closes. An immutable snapshot of narrative + result is promoted to `shared_history`. `task_narrative` and `task_controls` are emptied.       |
 
 ```
    first_rendering        live_capture          final_rendering
    ──────────────         ─────────────         ────────────────
-   El agente emite        El usuario actúa      El renderer congela
-   narrativa + tarea      sobre los controles   la tarea, promueve
-   a las zonas B y C      en zona C             snapshot a zona A
-   (privado)              (privado)             (compartido)
+   The agent emits        The user acts         The renderer freezes
+   narrative + task       on the controls       the task, promotes
+   to zones B and C       in zone C             snapshot to zone A
+   (private)              (private)             (shared)
 ```
 
-#### 10.2.3 Matriz zona × fase
+#### 10.2.3 Zone × phase matrix
 
 ```
                   first_rendering         live_capture            final_rendering
                   ─────────────────       ──────────────────      ──────────────────────────
-shared_history    (sin cambios)           (sin cambios)           snapshot inmutable de la
-                                                                  narrativa + tarea resuelta
+shared_history    (no changes)            (no changes)            immutable snapshot of the
+                                                                  narrative + resolved task
 
-task_narrative    narrativa del mensaje   narrativa del mensaje   (vacío)
-                  (texto, imagen, etc.)   (sin cambios)
+task_narrative    message narrative       message narrative       (empty)
+                  (text, image, etc.)     (no changes)
 
-task_controls     componente interactivo  componente + feedback   (vacío)
-                  vivo                    de la interacción
+task_controls     live interactive        component + feedback    (empty)
+                  component               of the interaction
 ```
 
-**Casos borde:**
+**Edge cases:**
 
-- **Mensaje sin tarea (solo narrativa).** No entra al lifecycle: la narrativa se renderiza directo en `shared_history`.
-- **Mensaje sin narrativa (solo tarea).** `task_narrative` queda vacía durante `first_rendering` y `live_capture`. En `final_rendering`, el snapshot solo contiene la tarea resuelta.
-- **Tarea cancelada o expirada.** Subcaso de `final_rendering`: el snapshot registra el estado cancelado.
+- **Message with no task (only narrative).** Does not enter the lifecycle: the narrative renders directly to `shared_history`.
+- **Message with no narrative (only task).** `task_narrative` stays empty during `first_rendering` and `live_capture`. In `final_rendering`, the snapshot contains only the resolved task.
+- **Cancelled or expired task.** A sub-case of `final_rendering`: the snapshot records the cancelled state.
 
-**Lo que NO está en PML:**
+**What is NOT in PML:**
 
-Las decisiones de **audiencia** (quién es el disparador, quién ve las zonas privadas, quién recibe el snapshot final) **no se expresan en PML**. PML solo declara qué renderizar. La asignación de audiencia y visibilidad por participante la resuelve el runner del agente vía metadata del turno (envelope), antes de que el PML llegue al renderer.
+**Audience** decisions (who is the triggerer, who sees the private zones, who receives the final snapshot) **are not expressed in PML**. PML only declares what to render. Audience assignment and per-participant visibility is resolved by the agent runner via turn metadata (envelope), before the PML reaches the renderer.
 
-### 10.3 Aplicación del modelo a los componentes
+### 10.3 Applying the model to components
 
-- **Componentes pasivos** (text, markdown, image, media, facts, divider, dtable, raw) se renderizan **directo en `shared_history`**. No atraviesan `task_narrative` ni `task_controls`.
-- **Componentes interactivos** (input, toggle, choice, confirm, form) atraviesan el lifecycle completo: `first_rendering` → `live_capture` → `final_rendering`.
-- En un `form`, el lifecycle se aplica al form como **una unidad**: los hijos no tienen lifecycle propio; viven dentro del `task_controls` del form mientras dura `live_capture`, y el snapshot final incluye al form completo con los valores resueltos.
+- **Passive components** (text, markdown, image, media, facts, divider, dtable, raw) render **directly in `shared_history`**. They do not traverse `task_narrative` or `task_controls`.
+- **Interactive components** (input, toggle, choice, confirm, form) traverse the full lifecycle: `first_rendering` → `live_capture` → `final_rendering`.
+- In a `form`, the lifecycle applies to the form as **a unit**: children do not have their own lifecycle; they live inside the form's `task_controls` while `live_capture` lasts, and the final snapshot includes the full form with resolved values.
 
-**Caracterización de `live_capture` por componente:**
+**Characterization of `live_capture` per component:**
 
-| Componente | Manifestación de `live_capture`                                                                              |
-| ---------- | ------------------------------------------------------------------------------------------------------------ |
-| `input`    | Teclado/selector/GPS/picker abierto, captura en curso                                                        |
-| `toggle`   | Fila táctil, cambio de estado binario                                                                        |
-| `choice`   | Selección de una o varias opciones                                                                           |
-| `confirm`  | Diálogo modal explícito; el chat input queda pausado mientras dura                                           |
-| `form`     | El usuario edita libremente cualquier hijo; ninguno emite `[[INTERACTION]]`. La fase cierra solo con submit. |
+| Component  | Manifestation of `live_capture`                                                                                       |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| `input`    | Keyboard/picker/GPS/file picker open, capture in progress                                                             |
+| `toggle`   | Tappable row, binary state change                                                                                     |
+| `choice`   | Selection of one or more options                                                                                      |
+| `confirm`  | Explicit modal dialog; the chat input is paused while it lasts                                                        |
+| `form`     | The user freely edits any child; none emits `[[INTERACTION]]`. The phase closes only on submit.                       |
 
-### 10.4 Gestos soportados
+### 10.4 Supported gestures
 
-| Gesto                 | Acción                               |
-| --------------------- | ------------------------------------ |
-| Tap en botón / opción | Seleccionar / activar                |
-| Tap en toggle / fila  | Cambiar estado                       |
-| Tap en campo de input | Abrir teclado / picker               |
-| Long-press            | Mostrar `tooltip` (si está definido) |
+| Gesture                 | Action                                |
+| ----------------------- | ------------------------------------- |
+| Tap on button / option  | Select / activate                     |
+| Tap on toggle / row     | Change state                          |
+| Tap on input field      | Open keyboard / picker                |
+| Long-press              | Show `tooltip` (if defined)           |
 
-### 10.5 Lineamientos por componente
+### 10.5 Component guidelines
 
-Resumen práctico; los diagramas extensos por fase quedan fuera del cuerpo principal de esta spec para mantenerla densa. Implementaciones de referencia deben consultar la guía interna de UX del proyecto.
+Practical summary; extensive per-phase diagrams stay out of the main body of this spec to keep it dense. Reference implementations should consult the project's internal UX guide.
 
-**text / markdown:** mantener párrafos cortos (1-3 líneas visibles); evitar varios títulos grandes consecutivos.
+**text / markdown:** keep paragraphs short (1-3 visible lines); avoid several large headings in a row.
 
-**facts:** preferir `columns="1"` en móvil salvo que claves y valores sean muy cortos; no usar para datos editables.
+**facts:** prefer `columns="1"` on mobile unless keys and values are very short; do not use for editable data.
 
-**dtable:** permitir scroll horizontal o transformar a filas-lista si la tabla es ancha; evitar celdas largas (usar `facts` o `markdown` en su lugar).
+**dtable:** allow horizontal scroll or transform into list rows if the table is wide; avoid long cells (use `facts` or `markdown` instead).
 
-**image:** siempre respetar `alt`; reservar espacio antes de cargar para evitar saltos.
+**image:** always respect `alt`; reserve space before loading to prevent layout shifts.
 
-**media:** no autoreproducir; mostrar controles nativos; usar `poster` cuando esté disponible.
+**media:** do not autoplay; show native controls; use `poster` when available.
 
-**divider:** usar para separar grupos, no después de cada elemento.
+**divider:** use to separate groups, not after every element.
 
-**input:** abrir teclado adecuado según `type`; validar tan pronto como sea posible sin interrumpir; mostrar `error` cerca del campo; pedir permisos con contexto antes de invocar GPS/cámara/archivos.
+**input:** open the appropriate keyboard based on `type`; validate as soon as possible without interrupting; show `error` near the field; ask for permissions in context before invoking GPS/camera/files.
 
-**toggle:** describir el estado activado en el `label`; toda la fila debe ser tappable.
+**toggle:** describe the active state in the `label`; the whole row must be tappable.
 
-**choice:** `style="buttons"` para 2-5 opciones cortas; `style="radio"` cuando convenga ver todas las opciones largas; `style="dropdown"` para muchas opciones.
+**choice:** `style="buttons"` for 2-5 short options; `style="radio"` when it helps to see all long options; `style="dropdown"` for many options.
 
-**confirm:** `title` que nombre la decisión (no solo "Confirmar"); `message` con la consecuencia en una frase; `style="danger"` solo para acciones destructivas; el botón de cancelar siempre visible y emite `[[INTERACTION ...]]` igual que el de confirmar.
+**confirm:** `title` that names the decision (not just "Confirm"); `message` with the consequence in one sentence; `style="danger"` only for destructive actions; the cancel button is always visible and emits `[[INTERACTION ...]]` just like the confirm one.
 
-**form:** mantener pocos campos por form (idealmente ≤7); etiquetas claras encima de cada campo; agrupar narrativamente con `text` o `divider`; submit button al final, full-width, con `submit-label` que describa la acción ("Crear cuenta", "Confirmar pedido"); no usar para acciones destructivas (eso es `confirm`); mostrar los errores de validación inline justo bajo cada campo fallido.
+**form:** keep few fields per form (ideally ≤7); clear labels above each field; group narratively with `text` or `divider`; submit button at the end, full-width, with `submit-label` that describes the action ("Create account", "Confirm order"); do not use for destructive actions (that is `confirm`); show validation errors inline right below each failed field.
 
 ---
 
-## 11. Manejo de errores
+## 11. Error handling
 
-### 11.1 Errores del agente (PML malformado)
+### 11.1 Agent errors (malformed PML)
 
-| Error                                                  | Severidad | Acción del renderer                                            |
-| ------------------------------------------------------ | --------- | -------------------------------------------------------------- |
-| Tag de cierre faltante                                 | Alta      | Intentar autocerrar; si no, truncar                            |
-| ID faltante                                            | Media     | Generar ID automático                                          |
-| ID duplicado                                           | Media     | Renderizar el primero                                          |
-| Atributo desconocido                                   | Baja      | Ignorar                                                        |
-| Atributo en camelCase                                  | Baja      | Aceptar como alias del kebab-case                              |
-| Valor inválido                                         | Media     | Usar default                                                   |
-| Hijo no permitido                                      | Media     | Renderizar como texto                                          |
-| Profundidad > 3                                        | Media     | Aplanar al nivel 3                                             |
-| PML ilegible                                           | Alta      | Renderizar como texto plano                                    |
-| Hijo prohibido dentro de `form` (`confirm`, `dtable`, `form`) | Media | Omitir del form; no contribuye a `[[INTERACTION]]`; loggear warning |
-| Hijo de `form` con `id="id"` o `id="value"`            | Alta      | Renderizar form como texto plano (id reservado)                |
+| Error                                                  | Severity | Renderer action                                                                                                                       |
+| ------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Missing closing tag                                    | High     | Try to auto-close; if not, truncate                                                                                                   |
+| Missing ID                                             | Medium   | Generate automatic ID                                                                                                                 |
+| Duplicate ID                                           | Medium   | Render the first                                                                                                                      |
+| Unknown attribute                                      | Low      | Ignore                                                                                                                                |
+| Attribute in camelCase                                 | Low      | Accept as alias of the kebab-case                                                                                                     |
+| Invalid value                                          | Medium   | Use default                                                                                                                           |
+| Disallowed child                                       | Medium   | Render as text                                                                                                                        |
+| Depth > 3                                              | Medium   | Flatten to level 3                                                                                                                    |
+| Unreadable PML                                         | High     | Render as plain text                                                                                                                  |
+| Forbidden child inside `form` (`confirm`, `dtable`, `form`) | Medium | Omit from the form; does not contribute to `[[INTERACTION]]`; log warning                                                              |
+| Multi-field bracket with attributes without `field-` prefix (v1.5 format) | Low | Accept as a temporary alias in v1.6 renderers; log migration warning. v1.6 agents must always emit `field-*`.                          |
+| Multi-field bracket with `field-*` attributes sent to a v1.5 parser | Low | The v1.5 parser silently ignores them; the agent receives the degraded interaction (only `id`). Negotiate version via the envelope.   |
 
-### 11.2 Errores de recursos
+### 11.2 Resource errors
 
-| Error                | Acción                                                           |
-| -------------------- | ---------------------------------------------------------------- |
-| Imagen no carga      | Mostrar `alt` + placeholder                                      |
-| Media no carga       | Mensaje + botón reintentar                                       |
-| Upload de file falla | Mostrar error y permitir reintentar; no emitir `[[INTERACTION]]` |
+| Error                | Action                                                            |
+| -------------------- | ----------------------------------------------------------------- |
+| Image fails to load  | Show `alt` + placeholder                                          |
+| Media fails to load  | Message + retry button                                            |
+| File upload fails    | Show error and allow retry; do not emit `[[INTERACTION]]`         |
 
-### 11.3 Errores de validación (usuario)
+### 11.3 Validation errors (user)
 
-| Error                              | Acción                                                                                                              |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Campo requerido vacío              | Borde rojo + `error-message`                                                                                        |
-| Validación falla local             | Borde rojo + mensaje                                                                                                |
-| Validación falla servidor          | El agente envía actualización de estado (§7.6)                                                                      |
-| Validación local falla en `form`   | La ChatApp marca cada hijo fallido con `error="..."`, no emite `[[INTERACTION]]`, mantiene el form en `live_capture` |
-| Validación servidor falla en `form` | El agente re-emite el mismo form con valores previos preservados y `error="..."` en el campo fallido (§7.6)        |
+| Error                                  | Action                                                                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Required field empty                   | Red border + `error-message`                                                                                            |
+| Local validation fails                 | Red border + message                                                                                                    |
+| Server validation fails                | The agent sends a state update (§7.6)                                                                                   |
+| Local validation fails in `form`       | The ChatApp marks each failed child with `error="..."`, does not emit `[[INTERACTION]]`, keeps the form in `live_capture` |
+| Server validation fails in `form`      | The agent re-emits the same form with previous values preserved and `error="..."` on the failed field (§7.6)            |
 
 ---
 
-## 12. Versionado y extensibilidad
+## 12. Versioning and extensibility
 
-### 12.1 Versionado
-
-```
-PML v1.5 — Mayo 2026 (esta especificación)
-  - Nuevo componente `form` (§6.5): contenedor de campos con submit único
-  - `form` emite una sola [[INTERACTION]] multi-campo (formato definido en v1.4 §7.3)
-  - Validación local del form en submit, server-side via actualización de estado
-  - Reglas explícitas: hijos prohibidos (confirm, dtable, form anidado), ids reservados (id, value)
-  - Sin cambios de sintaxis: parsers v1.4 leen PML v1.5 (form desconocido → texto plano)
-```
+### 12.1 Versioning
 
 ```
-PML v1.4 — Mayo 2026
-  - Formato [[INTERACTION]] unificado con atributos quoted, preparado para multi-campo
-  - Atributos en kebab-case consistente (rename: errorMessage → error-message, etc.)
-  - EBNF completo y consistente
-  - Profundidad máxima clarificada en 3 niveles
-  - Resolución de ambigüedades: confirm labels vs values, am-pm presentación vs interacción
-  - URL encoding documentado de forma exhaustiva
-  - Sintaxis-stable: parsers v1.3 siguen leyendo PML v1.4 si aceptan camelCase como alias
+PML v1.6 — May 2026 (this specification)
+  - Cleanup of the multi-field bracket: a form's fields are serialized with the `field-*` prefix
+  - Repealed the reserved-IDs rule on form children (id, value): IDs are now free
+  - Explicit namespace separation in [[INTERACTION]]:
+      · metadata: id, value
+      · data: field-<sub-id>
+  - v1.6 renderers accept the v1.5 format (unprefixed attributes) as a temporary alias
+  - v1.5 renderers that receive v1.6 brackets ignore field-* ("unknown attributes" rule)
+  - No changes in the declarative syntax: PML components are written exactly the same
 ```
 
 ```
-PML v1.3 — Mayo 2026
-  - Revisión de componentes
-  - Refinamiento de términos
+PML v1.5 — May 2026
+  - New `form` component (§6.5): field container with single submit
+  - `form` emits a single multi-field [[INTERACTION]] (format defined in v1.4 §7.3)
+  - Local form validation on submit, server-side via state update
+  - Explicit rules: forbidden children (confirm, dtable, nested form), reserved ids (id, value)
+  - No syntax changes: v1.4 parsers read PML v1.5 (unknown form → plain text)
 ```
 
 ```
-PML v1.2 — Mayo 2026
-  - 14 componentes standalone
-  - Reglas estrictas de parseo léxico (EBNF refinado)
+PML v1.4 — May 2026
+  - Unified [[INTERACTION]] format with quoted attributes, prepared for multi-field
+  - Consistent kebab-case attributes (rename: errorMessage → error-message, etc.)
+  - Full and consistent EBNF
+  - Maximum depth clarified at 3 levels
+  - Ambiguity resolution: confirm labels vs values, am-pm presentation vs interaction
+  - URL encoding documented exhaustively
+  - Syntax-stable: v1.3 parsers still read PML v1.4 if they accept camelCase as alias
 ```
 
 ```
-PML v1.1 — Abril 2026
-  - 14 componentes standalone
-  - Layout responsivo
+PML v1.3 — May 2026
+  - Component review
+  - Term refinement
 ```
 
-### 12.2 Proceso de extensión
+```
+PML v1.2 — May 2026
+  - 14 standalone components
+  - Strict lexical parsing rules (refined EBNF)
+```
 
-1. **Componentes nuevos** llegan en versiones minor (v1.5, v1.6, ...).
-2. **Cambios incompatibles de sintaxis** solo en versiones major (v2.0).
-3. Los renderers deben **ignorar componentes desconocidos** o renderizarlos como texto plano.
-4. Los agentes deben **decodificar** atributos en `kebab-case` aunque hayan sido entrenados con `camelCase`.
+```
+PML v1.1 — April 2026
+  - 14 standalone components
+  - Responsive layout
+```
 
-### 12.3 Candidatos para versiones futuras
+### 12.2 Extension process
 
-**v1.6 — extensiones del form** (compatibles, aditivas):
+1. **New components** arrive in minor versions (v1.5, v1.6, ...).
+2. **Incompatible syntax changes** only in major versions (v2.0).
+3. Renderers must **ignore unknown components** or render them as plain text.
+4. Agents must **decode** attributes in `kebab-case` even if they were trained with `camelCase`.
 
-| Extensión                 | Descripción                                                                                                       |
+### 12.3 Candidates for future versions
+
+**v1.7 — form extensions** (compatible, additive):
+
+| Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `form-section`            | Sección colapsable dentro de un form, con `label` y estado expanded/collapsed.                                    |
-| `form` con `cancel-label` | Segundo CTA secundario que emite `[[INTERACTION id="form-id" cancelled="true"]]` sin validar.                     |
-| `form` con `disabled`     | Permite deshabilitar el form entero durante envío al backend.                                                    |
-| Validación cruzada        | Atributo `validate-with="other-field-id"` para reglas entre campos (ej. confirmación de contraseña).             |
+| `form-section`            | Collapsible section inside a form, with `label` and expanded/collapsed state.                                     |
+| `form` with `cancel-label`| Secondary CTA that emits `[[INTERACTION id="form-id" cancelled="true"]]` without validating.                      |
+| `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
+| Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.7+ — nuevos componentes:**
+**v1.8+ — new components:**
 
-| Componente  | Descripción                                                              | Prioridad |
-| ----------- | ------------------------------------------------------------------------ | --------- |
-| `stepper`   | Flujo multi-paso con navegación previa/siguiente (forms encadenados).    | Media     |
-| `signature` | Captura de firma manuscrita.                                             | Baja      |
-| `rating`    | Selector de calificación (estrellas, números).                           | Baja      |
+| Component   | Description                                                              | Priority |
+| ----------- | ------------------------------------------------------------------------ | -------- |
+| `stepper`   | Multi-step flow with previous/next navigation (chained forms).           | Medium   |
+| `signature` | Handwritten signature capture.                                           | Low      |
+| `rating`    | Rating selector (stars, numbers).                                        | Low      |
 
-**v2.0 — cambios sintácticos** (incompatibles): aún sin candidatos. Cualquier propuesta debe romper parsers existentes para justificar el bump major.
+**v2.0 — syntactic changes** (incompatible): no candidates yet. Any proposal must break existing parsers to justify a major bump.
 
 ---
 
-## Apéndice A — Referencia rápida
+## Appendix A — Quick reference
 
 ```
 ┌────────────────┬──────────────────┬─────────────────────────────────────────┐
-│ Componente     │ Tipo             │ Uso principal                            │
+│ Component      │ Type             │ Main use                                 │
 ├────────────────┼──────────────────┼─────────────────────────────────────────┤
-│ text           │ pasivo           │ Texto estático con estilo                │
-│ markdown       │ pasivo           │ Texto con formato Markdown               │
-│ facts          │ pasivo           │ Tabla clave-valor                        │
-│ fact           │ pasivo·hijo      │ Entrada individual de facts              │
-│ dtable         │ pasivo           │ Tabla de datos                           │
-│ dtrow          │ pasivo·hijo      │ Fila de un dtable                        │
-│ dtcol          │ pasivo·hijo      │ Celda de un dtrow                        │
-│ image          │ pasivo           │ Imagen estática                          │
-│ media          │ pasivo           │ Video o audio                            │
-│ divider        │ pasivo           │ Separador horizontal                     │
-│ raw            │ pasivo           │ Bloque de texto sin procesar             │
+│ text           │ passive          │ Static text with style                   │
+│ markdown       │ passive          │ Text with Markdown formatting            │
+│ facts          │ passive          │ Key-value table                          │
+│ fact           │ passive·child    │ Individual entry of facts                │
+│ dtable         │ passive          │ Data table                               │
+│ dtrow          │ passive·child    │ Row of a dtable                          │
+│ dtcol          │ passive·child    │ Cell of a dtrow                          │
+│ image          │ passive          │ Static image                             │
+│ media          │ passive          │ Video or audio                           │
+│ divider        │ passive          │ Horizontal separator                     │
+│ raw            │ passive          │ Unparsed text block                      │
 ├────────────────┼──────────────────┼─────────────────────────────────────────┤
-│ input          │ interactivo      │ Campo de entrada (9 subtipos)            │
-│ toggle         │ interactivo      │ Interruptor binario                      │
-│ choice         │ interactivo      │ Selección entre opciones                 │
-│ opt            │ interactivo·hijo │ Opción individual de un choice           │
-│ confirm        │ interactivo      │ Diálogo de confirmación                  │
-│ form           │ interactivo      │ Contenedor con submit único (multi-campo)│
+│ input          │ interactive      │ Entry field (9 subtypes)                 │
+│ toggle         │ interactive      │ Binary switch                            │
+│ choice         │ interactive      │ Selection between options                │
+│ opt            │ interactive·child│ Individual option of a choice            │
+│ confirm        │ interactive      │ Confirmation dialog                      │
+│ form           │ interactive      │ Container with single submit (multi-field)│
 └────────────────┴──────────────────┴─────────────────────────────────────────┘
 ```
 
-**Formato de interacción canónico (single-value):**
+**Canonical interaction format (single-value):**
 
 ```
 [[INTERACTION id="component-id" value="user-value"]]
 ```
 
-**Formato de interacción multi-campo (form):**
+**Multi-field interaction format (form, v1.6):**
 
 ```
-[[INTERACTION id="form-id" campo-a="val-a" campo-b="val-b" ...]]
+[[INTERACTION id="form-id" field-field-a="val-a" field-field-b="val-b" ...]]
 ```
 
 ---
 
-## Apéndice B — EBNF completo
+## Appendix B — Full EBNF
 
 ```ebnf
-(* ─── Mensaje ───────────────────────────────────────────────────────── *)
+(* ─── Message ──────────────────────────────────────────────────────── *)
 message          = { text_chunk | component | interaction } ;
 
-text_chunk       = /[^[]+/ ;   (* cualquier texto que no inicia con "[" *)
+text_chunk       = /[^[]+/ ;   (* any text not starting with "[" *)
 
-(* ─── Componentes ──────────────────────────────────────────────────── *)
+(* ─── Components ───────────────────────────────────────────────────── *)
 component        = self_closing | container ;
 
 self_closing     = "[PML:" type attr_list " /]" ;
@@ -1566,7 +1586,7 @@ container        = open_tag inner close_tag ;
 open_tag         = "[PML:" type attr_list "]" ;
 close_tag        = "[/PML:" type "]" ;
 
-inner            = { component | text_chunk } ;   (* salvo en raw *)
+inner            = { component | text_chunk } ;   (* except in raw *)
 
 type             = std_component | aux_component ;
 
@@ -1577,48 +1597,54 @@ std_component    = "text"     | "markdown" | "facts"  | "dtable"
 
 aux_component    = "opt" | "fact" | "dtrow" | "dtcol" ;
 
-(* ─── Atributos ────────────────────────────────────────────────────── *)
+(* ─── Attributes ───────────────────────────────────────────────────── *)
 attr_list        = { WS attr } ;
 attr             = attr_name "=" attr_value ;
 attr_name        = /[a-z][a-z0-9-]*/ ;
 attr_value       = '"' /[^"]*/ '"' | "'" /[^']*/ "'" ;
 
-(* ─── Interacción (lado ChatApp → Agente) ──────────────────────────── *)
-interaction      = "[[INTERACTION" WS attr "id" WS_eq { WS attr } "]]" ;
-                   (* "id" es obligatorio; otros atributos opcionales      *)
-                   (* "value" es el atributo estándar para componentes      *)
-                   (* de un solo valor; el formato multi-campo de §7.3      *)
-                   (* admite cualquier número de atributos nombrados.       *)
+(* ─── Interaction (ChatApp → Agent side) ───────────────────────────── *)
+interaction      = "[[INTERACTION" WS interaction_attrs "]]" ;
+interaction_attrs= id_attr { WS (value_attr | field_attr) } ;
+id_attr          = "id" "=" attr_value ;            (* required           *)
+value_attr       = "value" "=" attr_value ;         (* single-value mode  *)
+field_attr       = "field-" sub_id "=" attr_value ; (* multi-field (v1.6) *)
+sub_id           = /[a-z][a-z0-9-]*/ ;
+                   (* "id" is required; in single-value, "value" is        *)
+                   (* included; in multi-field, one "field-<sub>" is       *)
+                   (* included per interactive child of the form.          *)
+                   (* v1.6 renderers accept bare attributes (v1.5 format)  *)
+                   (* as a temporary alias during the transition.          *)
 
 WS               = /\s+/ ;
 WS_eq            = "=" ;
 
-(* ─── Restricciones de anidación ───────────────────────────────────── *)
-(* Solo se aceptan estas relaciones contenedor → hijo directo:           *)
+(* ─── Nesting restrictions ─────────────────────────────────────────── *)
+(* Only these container → direct child relationships are accepted:       *)
 (*   choice  → opt                                                       *)
 (*   facts   → fact                                                      *)
 (*   dtable  → dtrow                                                     *)
 (*   dtrow   → dtcol                                                     *)
-(*   raw     → texto plano (parser desactivado)                          *)
+(*   raw     → plain text (parser disabled)                              *)
 (*   form    → text | markdown | divider | image | media | raw           *)
 (*             | facts | input | toggle | choice                         *)
-(*             (PROHIBIDO: dtable, confirm, form anidado)                 *)
-(*   resto   → no admite componentes hijos                               *)
+(*             (FORBIDDEN: dtable, confirm, nested form)                  *)
+(*   rest    → no child components allowed                               *)
 (*                                                                       *)
-(* Profundidad máxima: 3 niveles desde la raíz del mensaje.              *)
-(* Casos al límite: form > choice > opt, form > facts > fact,            *)
-(*                  dtable > dtrow > dtcol, choice > opt, facts > fact.  *)
+(* Maximum depth: 3 levels from the message root.                        *)
+(* Edge cases: form > choice > opt, form > facts > fact,                 *)
+(*             dtable > dtrow > dtcol, choice > opt, facts > fact.       *)
 ```
 
 ---
 
-## Apéndice C — Migración v1.3 → v1.4
+## Appendix C — Migration v1.3 → v1.4
 
-Esta sección lista todas las diferencias normativas. La intención es que un agente o renderer compatible con v1.3 pueda actualizarse con cambios mínimos.
+This section lists all normative differences. The intent is that an agent or renderer compatible with v1.3 can be updated with minimal changes.
 
-### C.1 Cambios de sintaxis (atributos)
+### C.1 Syntax changes (attributes)
 
-**Renombrado a `kebab-case`** (los renderers deben aceptar las formas antiguas como alias durante el periodo de transición):
+**Renamed to `kebab-case`** (renderers should accept the old forms as aliases during the transition period):
 
 | v1.3 (camelCase) | v1.4 (kebab-case) |
 | ---------------- | ----------------- |
@@ -1632,9 +1658,9 @@ Esta sección lista todas las diferencias normativas. La intención es que un ag
 | `amPm`           | `am-pm`           |
 | `maxSize`        | `max-size`        |
 
-### C.2 Formato de `[[INTERACTION]]`
+### C.2 `[[INTERACTION]]` format
 
-**v1.3** (tres variantes en el documento):
+**v1.3** (three variants in the document):
 
 ```
 [[INTERACTION]] id=X value=Y
@@ -1642,123 +1668,212 @@ Esta sección lista todas las diferencias normativas. La intención es que un ag
 [[INTERACTION id=X value=Y]]
 ```
 
-**v1.4** (forma única canónica):
+**v1.4** (single canonical form):
 
 ```
 [[INTERACTION id="X" value="Y"]]
 ```
 
-Los atributos van **siempre dentro del bracket**, **siempre con comillas dobles** y siguen exactamente la sintaxis de atributos PML. Esto habilita el formato multi-campo (§7.3) sin cambios de parser.
+Attributes go **always inside the bracket**, **always with double quotes** and follow PML's attribute syntax exactly. This enables the multi-field format (§7.3) without parser changes.
 
-### C.3 Defaults de `confirm` clarificados
+### C.3 `confirm` defaults clarified
 
-**v1.3:** ambigüedad entre "default: confirmed" como label o como value.
+**v1.3:** ambiguity between "default: confirmed" as label or value.
 
 **v1.4:**
 
-- `confirm-label` default: `"Confirmar"` (texto del botón).
-- `cancel-label` default: `"Cancelar"` (texto del botón).
-- Valor de la interacción: **siempre fijo** `confirmed` o `cancelled`, independiente del label.
+- `confirm-label` default: `"Confirm"` (button text).
+- `cancel-label` default: `"Cancel"` (button text).
+- Interaction value: **always fixed** `confirmed` or `cancelled`, regardless of the label.
 
-### C.4 `input type="time"` con `am-pm`
+### C.4 `input type="time"` with `am-pm`
 
-**v1.3:** contradicción interna sobre si `amPm="true"` cambia el formato de la interacción.
+**v1.3:** internal contradiction over whether `amPm="true"` changes the interaction format.
 
-**v1.4:** `am-pm` **solo afecta la presentación** al usuario. La interacción siempre devuelve `HH:mm` en formato 24 horas.
+**v1.4:** `am-pm` **only affects presentation** to the user. The interaction always returns `HH:mm` in 24-hour format.
 
-### C.5 `input type="currency"` valor de interacción
+### C.5 `input type="currency"` interaction value
 
-**v1.3:** ejemplo `value=$1,500.50` con símbolo y separador (incoherente con las reglas de URL encoding).
+**v1.3:** example `value=$1,500.50` with symbol and separator (incoherent with URL-encoding rules).
 
-**v1.4:** la interacción devuelve **número crudo** con punto decimal: `value="1500.50"`. La presentación con símbolo y separadores la realiza el renderer.
+**v1.4:** the interaction returns a **raw number** with decimal point: `value="1500.50"`. Presentation with symbol and separators is the renderer's responsibility.
 
-### C.6 Profundidad máxima
+### C.6 Maximum depth
 
-**v1.3:** §8.2 dice 3, §9.2 dice 2 (inconsistencia).
+**v1.3:** §8.2 says 3, §9.2 says 2 (inconsistency).
 
-**v1.4:** **3 niveles** en todas las referencias (`dtable > dtrow > dtcol`, `choice > opt`).
+**v1.4:** **3 levels** in all references (`dtable > dtrow > dtcol`, `choice > opt`).
 
 ### C.7 EBNF
 
-**v1.3:** apéndice B incompleto (no listaba `facts`, `fact`, `choice`, `opt`, `dtable`, `dtrow`, `dtcol`).
+**v1.3:** Appendix B was incomplete (did not list `facts`, `fact`, `choice`, `opt`, `dtable`, `dtrow`, `dtcol`).
 
-**v1.4:** EBNF completo, con producción explícita para el bracket `[[INTERACTION ...]]` y restricciones de anidación enumeradas.
+**v1.4:** complete EBNF, with explicit production for the `[[INTERACTION ...]]` bracket and enumerated nesting restrictions.
 
-### C.8 `opt` sin `id`
+### C.8 `opt` without `id`
 
-**v1.3:** el `value` se usa como `id` si falta, pero los IDs no pueden tener espacios. Edge case sin resolver para `value="Extra Grande"`.
+**v1.3:** `value` is used as `id` if missing, but IDs cannot have spaces. Edge case unresolved for `value="Extra Large"`.
 
-**v1.4:** regla explícita — `id` es **obligatorio en `opt`** cuando `value` contiene cualquier carácter fuera de `[a-z0-9-]`. Para identificadores triviales (números, palabras lowercase ASCII), el fallback al `value` sigue siendo legal.
+**v1.4:** explicit rule — `id` is **required on `opt`** when `value` contains any character outside `[a-z0-9-]`. For trivial identifiers (numbers, lowercase ASCII words), the fallback to `value` remains legal.
 
-### C.9 Atributos globales
+### C.9 Global attributes
 
-**v1.3:** lista mezclaba atributos universales con otros específicos de interactivos.
+**v1.3:** the list mixed universal attributes with others specific to interactives.
 
-**v1.4:** tabla de §4.7 indica explícitamente a qué tipo de componente aplica cada atributo global.
+**v1.4:** the table in §4.7 explicitly indicates to which component type each global attribute applies.
 
-### C.10 Encoding URL
+### C.10 URL encoding
 
-**v1.3:** la tabla omitía `\r`, `[`, `]`. El alcance de "qué se codifica y qué no" estaba disperso.
+**v1.3:** the table omitted `\r`, `[`, `]`. The scope of "what is encoded and what is not" was scattered.
 
-**v1.4:** tabla extendida en §7.2, con la regla consolidada: codificar texto libre del usuario, no codificar identificadores ni valores generados por sensores/sistema.
-
----
-
-## Apéndice D — Migración v1.4 → v1.5
-
-v1.5 es **puramente aditivo**: no hay cambios de sintaxis, no hay renombrado de atributos, no hay rebreaking. Un parser o agente v1.4 puede operar contra mensajes v1.5 con la única salvedad de que renderizará `[PML:form]` como texto plano (componente desconocido). Toda la maquinaria del bracket multi-campo `[[INTERACTION]]` ya existía en v1.4 §7.3.
-
-### D.1 Nuevo componente: `form` (§6.5)
-
-Contenedor de campos con un solo submit. Atributos:
-
-| Atributo       | Requerido | Default     |
-| -------------- | --------- | ----------- |
-| `id`           | Sí        | —           |
-| `submit-label` | No        | `"Enviar"`  |
-
-**Hijos permitidos:** `text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`, `input`, `toggle`, `choice`.
-
-**Hijos prohibidos:** `dtable` (profundidad), `confirm` (modal incompatible), `form` anidado.
-
-### D.2 Activación del formato multi-campo de `[[INTERACTION]]`
-
-v1.4 lo definió como contrato preparatorio. v1.5 lo activa: el form lo emite siempre. La sintaxis es **idéntica** a lo documentado en §7.3 de v1.4.
-
-```
-[[INTERACTION id="form-id" campo-1="val-1" campo-2="val-2" ...]]
-```
-
-### D.3 Reservas en hijos del form
-
-Un hijo del form **no puede** tener `id="id"` ni `id="value"` (colisión semántica con el bracket). El renderer debe rechazar el form completo si se viola.
-
-### D.4 Validación servidor (§7.6)
-
-La actualización de estado se extiende naturalmente al form: el agente re-emite el mismo form con valores previos preservados (`value="..."` en cada hijo) y `error="..."` en el campo fallido. La ChatApp restaura la tarea a `live_capture` sin crear nuevo snapshot.
-
-### D.5 Compatibilidad
-
-| Escenario                                | Comportamiento                                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------------- |
-| Renderer v1.4 recibe `[PML:form ...]`    | Componente desconocido → renderiza el contenido como texto plano (regla §9.2).        |
-| Renderer v1.5 recibe PML sin form        | Sin cambios; opera idéntico a v1.4.                                                   |
-| Agente v1.4 recibe `[[INTERACTION id="X" a="1" b="2"]]` | Si el agente entiende el contrato multi-campo de §7.3 (v1.4), lo procesa correctamente. Si no, ignora atributos desconocidos y procesa solo `id`. |
-
-### D.6 Lo que NO está en v1.5
-
-Para mantener el MVP simple, v1.5 **no incluye**:
-
-- Cancel button en form (usar un `choice` adicional).
-- Estilos del form (`style="..."`).
-- Secciones colapsables (`form-section`).
-- Validación cruzada entre campos.
-- Forms anidados o steppers.
-- Submit progresivo / autosave.
-- Forms multi-pantalla.
-
-Todas estas son candidatas a v1.6+ (ver §12.3).
+**v1.4:** extended table in §7.2, with the consolidated rule: encode free user text, do not encode identifiers or values generated by sensors/system.
 
 ---
 
-_PML v1.5 — PEPPO Platform — Mayo 2026_
+## Appendix D — Migration v1.4 → v1.5
+
+v1.5 is **purely additive**: there are no syntax changes, no attribute renames, no rebreaking. A v1.4 parser or agent can operate against v1.5 messages with the sole exception that it will render `[PML:form]` as plain text (unknown component). The whole `[[INTERACTION]]` multi-field machinery already existed in v1.4 §7.3.
+
+### D.1 New component: `form` (§6.5)
+
+Field container with a single submit. Attributes:
+
+| Attribute      | Required | Default     |
+| -------------- | -------- | ----------- |
+| `id`           | Yes      | —           |
+| `submit-label` | No       | `"Submit"`  |
+
+**Allowed children:** `text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`, `input`, `toggle`, `choice`.
+
+**Forbidden children:** `dtable` (depth), `confirm` (incompatible modal), nested `form`.
+
+### D.2 Activation of the `[[INTERACTION]]` multi-field format
+
+v1.4 defined it as a preparatory contract. v1.5 activates it: the form always emits it. The syntax is **identical** to what was documented in v1.4 §7.3.
+
+```
+[[INTERACTION id="form-id" field-1="val-1" field-2="val-2" ...]]
+```
+
+### D.3 Reservations in form children
+
+A form child **cannot** have `id="id"` or `id="value"` (semantic collision with the bracket). The renderer must reject the entire form if violated.
+
+### D.4 Server validation (§7.6)
+
+State update extends naturally to the form: the agent re-emits the same form with previous values preserved (`value="..."` on each child) and `error="..."` on the failed field. The ChatApp restores the task to `live_capture` without creating a new snapshot.
+
+### D.5 Compatibility
+
+| Scenario                                                  | Behavior                                                                                                                                              |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.4 renderer receives `[PML:form ...]`                   | Unknown component → renders the content as plain text (rule §9.2).                                                                                    |
+| v1.5 renderer receives PML without form                   | No changes; operates identically to v1.4.                                                                                                             |
+| v1.4 agent receives `[[INTERACTION id="X" a="1" b="2"]]`  | If the agent understands the multi-field contract of §7.3 (v1.4), it processes correctly. If not, it ignores unknown attributes and processes only `id`. |
+
+### D.6 What is NOT in v1.5
+
+To keep the MVP simple, v1.5 **does not include**:
+
+- Cancel button in form (use an additional `choice`).
+- Form styles (`style="..."`).
+- Collapsible sections (`form-section`).
+- Cross-field validation.
+- Nested forms or steppers.
+- Progressive submit / autosave.
+- Multi-screen forms.
+
+All these are candidates for v1.6+ (see §12.3).
+
+---
+
+## Appendix E — Migration v1.5 → v1.6
+
+v1.6 is **additive and minimalistic**: it adds no components and does not change PML's declarative syntax. It only refines the serialization of the `[[INTERACTION ...]]` bracket in multi-field mode, introducing the `field-*` prefix for form fields.
+
+### E.1 Motivation
+
+v1.5 had decided that form fields would occupy bare attributes in the bracket (`name="..."`, `email="..."`). This forced marking two identifiers as forbidden in form children (`id="id"` and `id="value"`) to avoid collision with the bracket's reserved names. The rule was artificial: an `id="value"` on an input is semantically legitimate (why not?) and the LLM could emit it without malice.
+
+v1.6 eliminates the collision by construction: fields live in their own namespace (`field-*`), separate from the metadata namespace (`id`, `value`).
+
+### E.2 Serialization change
+
+**v1.5:**
+
+```
+[[INTERACTION id="signup"
+  name="John+Smith"
+  email="john%40e.com"
+  plan="pro"]]
+```
+
+**v1.6:**
+
+```
+[[INTERACTION id="signup"
+  field-name="John+Smith"
+  field-email="john%40e.com"
+  field-plan="pro"]]
+```
+
+No changes in the form declaration: `[PML:input id="name" ... /]` is written exactly the same.
+
+### E.3 Reserved IDs: repealed
+
+| v1.5                                                                                                | v1.6                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Form children cannot declare `id="id"` or `id="value"`. The renderer rejects the form if it occurs. | **No restriction.** `id="id"`, `id="value"`, `id="error"` are valid in form children; they serialize to `field-id`, `field-value`, `field-error`, without collision.              |
+
+### E.4 Compatibility
+
+| Scenario                                            | Behavior                                                                                                                                                                                                       |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1.6 agent → v1.6 renderer                          | Expected case: the agent emits `field-*` and the renderer understands them natively.                                                                                                                           |
+| v1.5 agent → v1.6 renderer                          | The v1.6 renderer accepts bare attributes (`name="..."`) as a temporary alias and processes them as if they carried an implicit `field-` prefix. Logs a migration warning.                                     |
+| v1.6 agent → v1.5 renderer                          | The v1.5 renderer does not understand `field-*` and silently ignores them (rule §9.2 "unknown attributes"). The agent receives the degraded interaction: only the form's `id`, with no fields.                  |
+| v1.6 agent with a form with no interactive children | Emits `[[INTERACTION id="form-id"]]` with no `field-*` attributes. Identical to v1.5.                                                                                                                          |
+| Version negotiation                                 | The turn envelope must declare the version supported by the renderer (`pml-version: "1.5"` or `"1.6"`) so the agent picks the format to emit.                                                                  |
+
+### E.5 Impact table by section
+
+| Section                            | Change                                                                                                                |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| §6.5 form — serialization          | Bracket fields carry the `field-*` prefix.                                                                            |
+| §6.5 form — reserved IDs           | Repealed: no forbidden names on form children anymore.                                                                |
+| §6.5 form — namespaces             | New table that distinguishes bracket metadata (`id`, `value`) from form fields (`field-<sub-id>`).                    |
+| §7.3 multi-field                   | Generative rule updated to the `field-*` prefix; design properties updated; examples re-prefixed.                     |
+| §8.2 nesting rules                 | Rule 5 (`id="id"`, `id="value"` forbidden) **repealed**; text replaced with clarification of the new semantics.       |
+| §9.1 rules for LLMs                | Rule 8 updated (no forbidden IDs); new rule 10 about emission with prefix.                                            |
+| §11.1 error handling               | Removed the row "Form child with id='id' or 'value'"; added two cross-compatibility rows v1.5 ↔ v1.6.                 |
+| §12.1 versioning                   | Added v1.6 entry.                                                                                                     |
+| Appendix A                         | Multi-field format example updated with prefix.                                                                       |
+| Appendix B EBNF                    | The `interaction` production rewritten with `id_attr`, `value_attr`, `field_attr`.                                    |
+
+### E.6 What does NOT change in v1.6
+
+- The declarative syntax of any PML component (`[PML:type ...]`, `[/PML:type]`).
+- Lexical rules (§4.4).
+- The component catalog (same 14 from v1.5).
+- Global attributes (§4.7).
+- URL encoding rules (§7.2).
+- Zones/phases model (§10.2).
+- The `form` component itself (attributes, allowed children, lifecycle, validation).
+
+### E.7 What is still NOT in v1.6
+
+To keep the v1.5 → v1.6 delta focused solely on cleaning up the multi-field bracket design smell, v1.6 **still does not include**:
+
+- Cancel button in form (use an additional `choice`).
+- Form styles (`style="..."`).
+- Collapsible sections (`form-section`).
+- Cross-field validation.
+- Nested forms or steppers.
+- Progressive submit / autosave.
+- Multi-screen forms.
+
+All remain candidates for v1.7+ (see §12.3).
+
+---
+
+_PML v1.6 — PEPPO Platform — May 2026_
