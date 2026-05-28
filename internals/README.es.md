@@ -4,6 +4,8 @@
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.6.1 (Mayo 2026).** Agrega accion cancel nativa al `form`: atributo `cancel-label` + interaccion de cancelacion con bracket vacio `[[INTERACTION id="form-id"]]`. Cuando esta presente, la ChatApp renderiza un boton secundario de cancelacion junto al submit. Cancelar emite una interaccion con solo el atributo `id` (sin `value`, sin `field-*`), permitiendo al agente distinguir cancelacion de envio. Ver §6.5.
+>
 > **v1.6 (Mayo 2026).** Limpia la serialización del bracket multi-campo introducido en v1.5: los campos de un `form` se serializan con prefijo `field-*` (`field-nombre="..."`, `field-email="..."`). Esto elimina la regla artificial "no usar `id="id"` ni `id="value"` en hijos del form" y hace explícita la frontera entre metadata del bracket y campos del form. Los IDs declarativos de los hijos siguen siendo libres (cualquier kebab-case válido). v1.6 es **aditivo**: los renderers v1.6 aceptan brackets v1.5 sin prefijo durante la transición; los renderers v1.5 que reciban un bracket v1.6 ignoran los `field-*` desconocidos y procesan solo `id`. Ver Apéndice E.
 
 ---
@@ -770,9 +772,7 @@ Diálogo de confirmación. Renderiza un modal con dos acciones: aceptar o cancel
 
 ### 6.5 form
 
-Contenedor de campos con **un único submit**. Es el primer componente PML que captura múltiples valores en una sola acción: cuando el usuario presiona el botón submit y la validación local pasa, la ChatApp emite **una sola** `[[INTERACTION]]` con un atributo `field-<id>` por cada hijo interactivo (formato multi-campo de §7.3).
-
-Es la versión MVP del componente: layout vertical simple, un solo CTA, sin secciones colapsables, sin steps, sin estilos especiales. Componentes adicionales (`stepper`, `form-section`, etc.) quedan para versiones futuras.
+Contenedor de campos con **submit y cancel opcional**. Es el primer componente PML que captura múltiples valores en una sola acción: cuando el usuario presiona el botón submit y la validación local pasa, la ChatApp emite **una sola** `[[INTERACTION]]` con un atributo `field-<id>` por cada hijo interactivo (formato multi-campo de §7.3). Cuando `cancel-label` está presente, la ChatApp también renderiza un botón de cancelación que emite una interacción vacía (sin campos, sin value).
 
 #### Atributos
 
@@ -780,8 +780,7 @@ Es la versión MVP del componente: layout vertical simple, un solo CTA, sin secc
 | -------------- | --------- | ------ | ------------------------------------------------------ |
 | `id`           | Sí        | string | Identificador único del formulario (kebab-case).       |
 | `submit-label` | No        | string | Texto del botón de envío. Default: `"Enviar"`.         |
-
-> v1.6 sigue sin definir cancel button, estilos, ni callbacks alternos (igual que v1.5). Si necesitas una acción "Cancelar", emite un `choice` adicional después del form.
+| `cancel-label` | No        | string | Texto del botón de cancelación. Si se omite, no se renderiza botón de cancel. Cuando está presente, la ChatApp muestra un botón secundario junto al submit. |
 
 #### Hijos permitidos
 
@@ -794,7 +793,9 @@ Es la versión MVP del componente: layout vertical simple, un solo CTA, sin secc
 | `confirm`                                                                     | **No**    | Confirm es una acción modal autocontenida; mezclarlo con form crea ambigüedad de submit.    |
 | `form` anidado                                                                | **No**    | v1.5 prohíbe forms anidados; el agente debe usar flujos separados.                          |
 
-#### Comportamiento del submit
+#### Comportamiento de submit y cancel
+
+**Ruta de submit:**
 
 1. El usuario edita libremente los hijos interactivos del form. **Mientras el form está activo, sus hijos no emiten `[[INTERACTION]]` individuales** — sus valores quedan en estado local de la ChatApp.
 2. El usuario presiona el botón submit (texto: `submit-label`).
@@ -811,6 +812,23 @@ Es la versión MVP del componente: layout vertical simple, un solo CTA, sin secc
 5. **Si todas las validaciones pasan**:
    - La ChatApp emite una sola `[[INTERACTION]]` con el `id` del form y un atributo `field-<sub-id>` por cada hijo interactivo.
    - El form transiciona a `final_rendering`.
+
+**Ruta de cancel** (solo cuando `cancel-label` está presente):
+
+1. El usuario presiona el botón de cancelación (texto: `cancel-label`).
+2. La ChatApp emite una **interacción vacía** — solo el `id` del form, sin `value`, sin atributos `field-*`:
+   ```
+   [[INTERACTION id="form-id"]]
+   ```
+3. **No se ejecuta validación.** El form transiciona directamente a `final_rendering`.
+4. El agente recibe el bracket vacío y lo interpreta como cancelación: no se envió data, el usuario quiere salir del formulario.
+
+**Cómo distingue el agente submit de cancel:**
+
+| Bracket recibido | Significado |
+| --- | --- |
+| `[[INTERACTION id="X" field-a="..." field-b="..."]]` | Submit: campos presentes, procesar los datos. |
+| `[[INTERACTION id="X"]]` | Cancel: sin campos, el usuario abandonó el formulario. |
 
 #### Serialización de la interacción
 
@@ -836,6 +854,7 @@ Para un form con hijos interactivos `child-1`, `child-2`, ..., `child-n` con val
 | `id`                    | Identifica el componente raíz que originó la interacción.        |
 | `value`                 | (Modo single-value) Valor capturado de un componente atómico.    |
 | `field-<sub-id>`        | (Modo multi-campo) Valor capturado del hijo `<sub-id>` del form. |
+| (sin otros atributos)   | (Modo cancel) El form fue cancelado — solo `id`, sin datos.      |
 | Otros nombres pelados   | Reservados a futuras extensiones de metadata. **No usar.**       |
 
 > **Por qué el prefijo `field-`.** v1.5 había escogido nombres pelados (`nombre="..."`) para los campos del form, obligando a marcar `id` y `value` como IDs prohibidos en hijos. v1.6 aísla el espacio de campos con el prefijo `field-`: los IDs declarativos vuelven a ser libres y el bracket queda auto-descriptivo (cualquier atributo `field-*` es siempre un campo del form, sin importar la versión del agente que lo generó).
@@ -843,7 +862,7 @@ Para un form con hijos interactivos `child-1`, `child-2`, ..., `child-n` con val
 #### Ejemplo: registro de usuario
 
 ```
-[PML:form id="registro" submit-label="Crear cuenta"]
+[PML:form id="registro" submit-label="Crear cuenta" cancel-label="Cancelar"]
   [PML:text type="header" style="bold"]Crea tu cuenta[/PML:text]
 
   [PML:input id="nombre" type="text" label="Nombre completo"

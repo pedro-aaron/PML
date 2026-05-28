@@ -4,6 +4,8 @@
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.6.1 (May 2026).** Adds native cancel action to `form`: `cancel-label` attribute + empty-bracket cancel interaction `[[INTERACTION id="form-id"]]`. When present, the ChatApp renders a secondary cancel button alongside the submit button. Cancelling emits an interaction with only the `id` attribute (no `value`, no `field-*`), allowing the agent to distinguish cancel from submit. See §6.5.
+>
 > **v1.6 (May 2026).** Cleans up the serialization of the multi-field bracket introduced in v1.5: a `form`'s fields are now serialized with the `field-*` prefix (`field-name="..."`, `field-email="..."`). This eliminates the artificial rule "do not use `id="id"` or `id="value"` in form children" and makes the boundary between bracket metadata and form fields explicit. The declarative IDs of children remain unrestricted (any valid kebab-case). v1.6 is **additive**: v1.6 renderers accept v1.5 brackets without the prefix during the transition; v1.5 renderers that receive a v1.6 bracket ignore the unknown `field-*` attributes and process only `id`. See Appendix E.
 
 ---
@@ -770,9 +772,7 @@ Confirmation dialog. Renders a modal with two actions: accept or cancel.
 
 ### 6.5 form
 
-Field container with **a single submit**. It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each interactive child (multi-field format from §7.3).
-
-This is the MVP version of the component: simple vertical layout, a single CTA, no collapsible sections, no steps, no special styles. Additional components (`stepper`, `form-section`, etc.) are deferred to future versions.
+Field container with **submit and optional cancel**. It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each interactive child (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
 
 #### Attributes
 
@@ -780,8 +780,7 @@ This is the MVP version of the component: simple vertical layout, a single CTA, 
 | -------------- | -------- | ------ | -------------------------------------------------------- |
 | `id`           | Yes      | string | Unique identifier of the form (kebab-case).              |
 | `submit-label` | No       | string | Submit button text. Default: `"Submit"`.                 |
-
-> v1.6 still does not define a cancel button, styles, or alternate callbacks (same as v1.5). If you need a "Cancel" action, emit an additional `choice` after the form.
+| `cancel-label` | No       | string | Cancel button text. If omitted, no cancel button is rendered. When present, the ChatApp shows a secondary button alongside submit. |
 
 #### Allowed children
 
@@ -794,7 +793,9 @@ This is the MVP version of the component: simple vertical layout, a single CTA, 
 | `confirm`                                                                        | **No**  | Confirm is a self-contained modal action; mixing it with form creates submit ambiguity.          |
 | Nested `form`                                                                    | **No**  | v1.5 forbids nested forms; the agent must use separate flows.                                    |
 
-#### Submit behavior
+#### Submit and cancel behavior
+
+**Submit path:**
 
 1. The user freely edits the form's interactive children. **While the form is active, its children do not emit individual `[[INTERACTION]]`** — their values stay in the ChatApp's local state.
 2. The user presses the submit button (text: `submit-label`).
@@ -811,6 +812,23 @@ This is the MVP version of the component: simple vertical layout, a single CTA, 
 5. **If all validations pass**:
    - The ChatApp emits a single `[[INTERACTION]]` with the form's `id` and a `field-<sub-id>` attribute for each interactive child.
    - The form transitions to `final_rendering`.
+
+**Cancel path** (only when `cancel-label` is present):
+
+1. The user presses the cancel button (text: `cancel-label`).
+2. The ChatApp emits an **empty interaction** — only the form's `id`, no `value`, no `field-*` attributes:
+   ```
+   [[INTERACTION id="form-id"]]
+   ```
+3. **No validation runs.** The form transitions directly to `final_rendering`.
+4. The agent receives the empty bracket and interprets it as cancellation: no data was submitted, the user wants to leave the form.
+
+**How the agent distinguishes submit from cancel:**
+
+| Bracket received | Meaning |
+| --- | --- |
+| `[[INTERACTION id="X" field-a="..." field-b="..."]]` | Submit: fields present, process the data. |
+| `[[INTERACTION id="X"]]` | Cancel: no fields, user abandoned the form. |
 
 #### Interaction serialization
 
@@ -836,6 +854,7 @@ For a form with interactive children `child-1`, `child-2`, ..., `child-n` with v
 | `id`                     | Identifies the root component that originated the interaction.    |
 | `value`                  | (Single-value mode) Value captured from an atomic component.      |
 | `field-<sub-id>`         | (Multi-field mode) Value captured from the form's `<sub-id>` child. |
+| (no other attributes)    | (Cancel mode) Form was cancelled — `id` only, no data.            |
 | Other bare names         | Reserved for future metadata extensions. **Do not use.**          |
 
 > **Why the `field-` prefix.** v1.5 had chosen bare names (`name="..."`) for form fields, which forced marking `id` and `value` as forbidden IDs in children. v1.6 isolates the field space with the `field-` prefix: declarative IDs are free again and the bracket becomes self-describing (any `field-*` attribute is always a form field, regardless of the version of the agent that produced it).
@@ -843,7 +862,7 @@ For a form with interactive children `child-1`, `child-2`, ..., `child-n` with v
 #### Example: user signup
 
 ```
-[PML:form id="signup" submit-label="Create account"]
+[PML:form id="signup" submit-label="Create account" cancel-label="Cancel"]
   [PML:text type="header" style="bold"]Create your account[/PML:text]
 
   [PML:input id="name" type="text" label="Full name"
@@ -938,7 +957,10 @@ The ChatApp detects the same `id` and restores the task to `live_capture` withou
 │  │ ◉ Accept terms        │  │ ← toggle
 │  │                       │  │
 │  │ ┌───────────────────┐ │  │
-│  │ │  Create account   │ │  │ ← submit, full-width
+│  │ │  Create account   │ │  │ ← submit (primary)
+│  │ └───────────────────┘ │  │
+│  │ ┌───────────────────┐ │  │
+│  │ │     Cancel        │ │  │ ← cancel (secondary, if cancel-label)
 │  │ └───────────────────┘ │  │
 │  └───────────────────────┘  │
 └─────────────────────────────┘
