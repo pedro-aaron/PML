@@ -1,6 +1,6 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.6
+## Complete specification v1.6.1
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
@@ -58,6 +58,7 @@
 - [Appendix C — Migration v1.3 → v1.4](#appendix-c--migration-v13--v14)
 - [Appendix D — Migration v1.4 → v1.5](#appendix-d--migration-v14--v15)
 - [Appendix E — Migration v1.5 → v1.6](#appendix-e--migration-v15--v16)
+- [Appendix F — Migration v1.6 → v1.6.1](#appendix-f--migration-v16--v161)
 
 ---
 
@@ -772,7 +773,7 @@ Confirmation dialog. Renders a modal with two actions: accept or cancel.
 
 ### 6.5 form
 
-Field container with **submit and optional cancel**. It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each interactive child (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
+Field container with **submit and optional cancel**. A valid `form` must contain at least one interactive child (`input`, `toggle`, or `choice`). It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each interactive child (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
 
 #### Attributes
 
@@ -792,6 +793,12 @@ Field container with **submit and optional cancel**. It is the first PML compone
 | `dtable`                                                                         | **No**  | Would exceed the maximum depth of 3 (`form > dtable > dtrow > dtcol` = 4).                       |
 | `confirm`                                                                        | **No**  | Confirm is a self-contained modal action; mixing it with form creates submit ambiguity.          |
 | Nested `form`                                                                    | **No**  | v1.5 forbids nested forms; the agent must use separate flows.                                    |
+
+#### Validity condition: at least one interaction
+
+A `form` is valid only if it contains at least one direct interactive child: `input`, `toggle`, or `choice`.
+
+Passive children (`text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`) may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
 
 #### Submit and cancel behavior
 
@@ -828,7 +835,7 @@ Field container with **submit and optional cancel**. It is the first PML compone
 | Bracket received | Meaning |
 | --- | --- |
 | `[[INTERACTION id="X" field-a="..." field-b="..."]]` | Submit: fields present, process the data. |
-| `[[INTERACTION id="X"]]` | Cancel: no fields, user abandoned the form. |
+| `[[INTERACTION id="X"]]` | Cancel when `cancel-label` is present. A submit with no `field-*` attributes is invalid because a valid form must have at least one interactive child. |
 
 #### Interaction serialization
 
@@ -978,13 +985,13 @@ The form is **a single task**. It goes through the full lifecycle like any other
 
 #### Edge cases
 
-- **Form with no interactive children** (only narrative + submit): is valid. The emitted interaction is `[[INTERACTION id="form-id"]]` with no `field-*` attributes. Works as a CTA coupled to narrative.
+- **Form with no interactive children** (only passive content + submit): invalid. The renderer omits submit/cancel controls, renders the passive content as narrative/plain flow, and logs a warning. Use `choice` for a CTA or `confirm` for explicit acceptance/cancellation.
 - **`disabled` child**: is included in the interaction with its current value (the initial `value` or empty). The user cannot modify it, but the agent receives the value for field consistency.
 - **`readonly` child**: same as disabled regarding serialization; visually it appears editable but does not accept changes.
 - **Optional child with no initial value**: is included with value `""` in the serialization.
 - **Duplicate IDs across children**: the renderer applies the rules from §8.3 (renders the first, ignores the rest; the second does not contribute to the interaction).
 - **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`): the renderer treats it as plain text and omits it from the interaction. Logs a warning.
-- **Submit with zero valid interactive children**: validation passes trivially; `[[INTERACTION id="form-id"]]` is emitted.
+- **Submit with zero valid interactive children**: invalid form; no `[[INTERACTION]]` is emitted.
 - **v1.5 ↔ v1.6 compatibility**: a v1.6 renderer accepts brackets without a prefix (v1.5 format) during the transition period and processes them as if they carried an implicit `field-`. A v1.5 agent sent to a v1.6 renderer still works. A v1.6 agent sent to a v1.5 renderer emits `field-*` attributes that the v1.5 renderer silently ignores ("unknown attributes are dropped" rule); the agent receives the degraded interaction without fields. For maximum compatibility, the agent should negotiate version via the envelope metadata before choosing the format to emit.
 
 ---
@@ -1050,9 +1057,9 @@ Agent decodes:     "Pedro & María"
 
 ### 7.3 Multi-field interactions
 
-The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to components that capture multiple fields in a single action. The v1.6 generative rule is:
+The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to components that capture multiple fields in a single action. The v1.6+ generative rule for submit interactions is:
 
-> The bracket `[[INTERACTION ...]]` admits **any number of `field-<sub-id>` attributes** in addition to `id`. Each `field-*` attribute corresponds to a field of the compound component: the suffix is the sub-component's `id`, the value is the captured data.
+> The bracket `[[INTERACTION ...]]` admits **one or more `field-<sub-id>` attributes** in addition to `id`. Each `field-*` attribute corresponds to a field of the compound component: the suffix is the sub-component's `id`, the value is the captured data.
 
 **Canonical form (single value — input, choice, toggle, confirm):**
 
@@ -1087,6 +1094,7 @@ The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to compo
 3. Values follow the same URL encoding rules of §7.2.
 4. If a sub-component returns multiple selections (an embedded `choice multi="true"`), its value is serialized with commas: `field-days="mon,tue,wed"`.
 5. **No forbidden names** for child IDs: the `field-*` namespace isolates data from bracket metadata.
+6. **(v1.6.1)** A valid `form` submit includes at least one `field-*` attribute, because a valid `form` must contain at least one interactive child.
 
 > **v1.5 ↔ v1.6 compatibility.** v1.5 had introduced the `form` component emitting fields as bare attributes (`name="..."`), reserving the names `id` and `value`. v1.6 isolates them under the `field-*` prefix and removes the reservation. v1.6 renderers accept both formats during the transition; v1.6 agents always emit with the prefix. See Appendix E.
 
@@ -1222,6 +1230,7 @@ The renderer updates the same component instead of adding a new one.
 3. Passive components do not nest components (except for the container/child pairs in the table above).
 4. `form` **does not allow**: `dtable` (would exceed depth 3), `confirm` (modal incompatible with unified submit), or nested `form`.
 5. **(v1.6)** There are no forbidden names for the `id`s of form children. The `field-*` prefix of the multi-field bracket (§7.3) isolates the field namespace from the metadata one, so `id="id"`, `id="value"` or `id="error"` on children are valid and serialize to `field-id`, `field-value`, `field-error`. This repeals the v1.5 reserved-IDs rule.
+6. **(v1.6.1)** A `form` must contain at least one direct interactive child (`input`, `toggle`, or `choice`). Passive-only forms are invalid.
 
 ### 8.3 ID rules
 
@@ -1243,7 +1252,7 @@ The renderer updates the same component instead of adding a new one.
 5. **Always** end self-closing components with ` /]` (with space).
 6. **Always** close containers with `[/PML:type]`.
 7. When receiving `[[INTERACTION ...]]`, decode the URL-encoded values **before** reasoning about them. In multi-field mode, read the `field-<sub-id>` attributes ignoring the `field-` prefix to map to the child's `id` in the form.
-8. **In `form`**: give a unique `id` to each interactive child (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`. **(v1.6)** Child IDs are free: there are no reserved names anymore.
+8. **In `form`**: include at least one interactive child (`input`, `toggle`, or `choice`) and give a unique `id` to each interactive child (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`. **(v1.6)** Child IDs are free: there are no reserved names anymore.
 9. **When re-emitting a `form`** after a server error: use the same `id` of the form and populate `value="..."` on each child with the last known user value; add `error="..."` only on failed children (§7.6).
 10. **When emitting multi-field interactions (v1.6)**: always use the `field-` prefix in the bracket attribute names (`field-name="..."`, not `name="..."`). The unprefixed v1.5 format is deprecated and v1.6 renderers accept it only as a temporary alias.
 
@@ -1444,6 +1453,7 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | Depth > 3                                              | Medium   | Flatten to level 3                                                                                                                    |
 | Unreadable PML                                         | High     | Render as plain text                                                                                                                  |
 | Forbidden child inside `form` (`confirm`, `dtable`, `form`) | Medium | Omit from the form; does not contribute to `[[INTERACTION]]`; log warning                                                              |
+| `form` without any interactive child (`input`, `toggle`, `choice`) | Medium | Omit submit/cancel controls, render passive content as narrative/plain flow, log warning                                                |
 | Multi-field bracket with attributes without `field-` prefix (v1.5 format) | Low | Accept as a temporary alias in v1.6 renderers; log migration warning. v1.6 agents must always emit `field-*`.                          |
 | Multi-field bracket with `field-*` attributes sent to a v1.5 parser | Low | The v1.5 parser silently ignores them; the agent receives the degraded interaction (only `id`). Negotiate version via the envelope.   |
 
@@ -1472,7 +1482,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.6 — May 2026 (this specification)
+PML v1.6.1 — May 2026 (this specification)
+  - Native cancel action for `form` via the optional `cancel-label` attribute
+  - When present, the ChatApp renders a secondary cancel button alongside submit
+  - Cancel emits an empty interaction: [[INTERACTION id="form-id"]]
+  - Cancel skips validation and transitions the form directly to final_rendering
+  - Clarifies valid `form` composition: at least one interactive child is required
+  - Submit serialization remains unchanged: fields use the v1.6 `field-*` prefix
+```
+
+```
+PML v1.6 — May 2026
   - Cleanup of the multi-field bracket: a form's fields are serialized with the `field-*` prefix
   - Repealed the reserved-IDs rule on form children (id, value): IDs are now free
   - Explicit namespace separation in [[INTERACTION]]:
@@ -1535,7 +1555,6 @@ PML v1.1 — April 2026
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `form-section`            | Collapsible section inside a form, with `label` and expanded/collapsed state.                                     |
-| `form` with `cancel-label`| Secondary CTA that emits `[[INTERACTION id="form-id" cancelled="true"]]` without validating.                      |
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
@@ -1635,6 +1654,7 @@ sub_id           = /[a-z][a-z0-9-]*/ ;
                    (* "id" is required; in single-value, "value" is        *)
                    (* included; in multi-field, one "field-<sub>" is       *)
                    (* included per interactive child of the form.          *)
+                   (* id-only interactions are valid only for form cancel. *)
                    (* v1.6 renderers accept bare attributes (v1.5 format)  *)
                    (* as a temporary alias during the transition.          *)
 
@@ -1651,6 +1671,7 @@ WS_eq            = "=" ;
 (*   form    → text | markdown | divider | image | media | raw           *)
 (*             | facts | input | toggle | choice                         *)
 (*             (FORBIDDEN: dtable, confirm, nested form)                  *)
+(*             (REQUIRES at least one input, toggle, or choice)           *)
 (*   rest    → no child components allowed                               *)
 (*                                                                       *)
 (* Maximum depth: 3 levels from the message root.                        *)
@@ -1797,7 +1818,7 @@ State update extends naturally to the form: the agent re-emits the same form wit
 
 To keep the MVP simple, v1.5 **does not include**:
 
-- Cancel button in form (use an additional `choice`).
+- Cancel button in form (implemented later in v1.6.1).
 - Form styles (`style="..."`).
 - Collapsible sections (`form-section`).
 - Cross-field validation.
@@ -1805,7 +1826,7 @@ To keep the MVP simple, v1.5 **does not include**:
 - Progressive submit / autosave.
 - Multi-screen forms.
 
-All these are candidates for v1.6+ (see §12.3).
+After v1.5, `cancel-label` was implemented in v1.6.1. The remaining items stay candidates for future versions (see §12.3).
 
 ---
 
@@ -1886,7 +1907,7 @@ No changes in the form declaration: `[PML:input id="name" ... /]` is written exa
 
 To keep the v1.5 → v1.6 delta focused solely on cleaning up the multi-field bracket design smell, v1.6 **still does not include**:
 
-- Cancel button in form (use an additional `choice`).
+- Cancel button in form (implemented later in v1.6.1).
 - Form styles (`style="..."`).
 - Collapsible sections (`form-section`).
 - Cross-field validation.
@@ -1894,8 +1915,43 @@ To keep the v1.5 → v1.6 delta focused solely on cleaning up the multi-field br
 - Progressive submit / autosave.
 - Multi-screen forms.
 
-All remain candidates for v1.7+ (see §12.3).
+After v1.6, `cancel-label` was implemented in v1.6.1. The remaining items stay candidates for future versions (see §12.3).
 
 ---
 
-_PML v1.6 — PEPPO Platform — May 2026_
+## Appendix F — Migration v1.6 → v1.6.1
+
+v1.6.1 is a focused additive release: it keeps the v1.6 multi-field serialization unchanged, adds a native cancel action to `form`, and clarifies that every valid form must contain at least one interactive child.
+
+### F.1 New `form` attribute
+
+| Attribute      | Required | Default | Description |
+| -------------- | -------- | ------- | ----------- |
+| `cancel-label` | No       | —       | Cancel button text. If omitted, no cancel button is rendered. |
+
+### F.2 Cancel interaction
+
+When the user cancels a form, the ChatApp emits an empty interaction with only the form `id`:
+
+```
+[[INTERACTION id="form-id"]]
+```
+
+No local validation runs, no `value` is emitted, and no `field-*` attributes are emitted. Because a valid form always has at least one interactive child, a valid submit always includes at least one `field-*` attribute.
+
+### F.3 Form validity condition
+
+A `form` must contain at least one direct interactive child: `input`, `toggle`, or `choice`. Passive-only forms are invalid and must not emit `[[INTERACTION]]`.
+
+This makes the empty bracket unambiguous in v1.6.1: `[[INTERACTION id="form-id"]]` means cancel, not submit.
+
+### F.4 What does NOT change in v1.6.1
+
+- Submit interactions still serialize child values as `field-<sub-id>`.
+- The catalog of allowed and forbidden form child types remains unchanged.
+- The `field-*` namespace introduced in v1.6 remains canonical.
+- v1.6.1 renderers still accept the v1.5 unprefixed multi-field format as a temporary alias.
+
+---
+
+_PML v1.6.1 — PEPPO Platform — May 2026_
