@@ -1,9 +1,11 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.7
+## Complete specification v1.8
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.8 (May 2026).** Adds the optional `capture` attribute to `input type="file"`. It is a hint that instructs the ChatApp to open the device's camera, audio recorder, or video recorder directly instead of the file browser. The captured medium is still determined by `accept` (`image/*`, `audio/*`, `video/*`); `capture` only chooses the acquisition UI. Accepted values: `user` (front camera), `environment` (rear camera), `true` (direct capture, no camera preference). The output contract is unchanged — the ChatApp uploads the artifact and emits the same `[[INTERACTION id="..." value="<url>"]]`. `capture` is a non-binding hint: renderers without the requested hardware fall back to the standard file picker. See §6.1.9 and Appendix H.
+>
 > **v1.7 (May 2026).** Adds conditional form behavior with the auxiliary `rule` component. `PML:rule` is valid only as a direct child of `form` and can control the effective visibility or enabled state of form children with simple AND conditions. Rules may compare current serialized values via `when-<field-id>="..."` or renderer-owned component correctness via `state-<field-id>="correct|incorrect"`. Validation and `required` apply only to active children (`effective-visible=true` and `effective-enabled=true`). See §6.5.
 >
 > **v1.6.1 (May 2026).** Adds native cancel action to `form`: `cancel-label` attribute + empty-bracket cancel interaction `[[INTERACTION id="form-id"]]`. When present, the ChatApp renders a secondary cancel button alongside the submit button. Cancelling emits an interaction with only the `id` attribute (no `value`, no `field-*`), allowing the agent to distinguish cancel from submit. See §6.5.
@@ -62,6 +64,7 @@
 - [Appendix E — Migration v1.5 → v1.6](#appendix-e--migration-v15--v16)
 - [Appendix F — Migration v1.6 → v1.6.1](#appendix-f--migration-v16--v161)
 - [Appendix G — Migration v1.6.1 → v1.7](#appendix-g--migration-v161--v17)
+- [Appendix H — Migration v1.7 → v1.8](#appendix-h--migration-v17--v18)
 
 ---
 
@@ -618,11 +621,11 @@ Single file picker. The renderer uploads the file to an endpoint configured by t
 | Attribute  | Required | Type   | Description                                                |
 | ---------- | -------- | ------ | ---------------------------------------------------------- |
 | `accept`   | No       | string | Allowed MIME types (e.g.: `image/*`, `application/pdf`).   |
-| `max-size` | No       | string | Maximum size (e.g.: `5MB`, `10MB`).                        |
+| `capture`  | No       | `user` / `environment` / `true` | **(v1.8)** Hint to open the device's capture UI directly (camera, audio recorder, video recorder) instead of the file browser. |
 
 ```
 [PML:input id="photo" type="file" label="Upload your ID"
-  accept="image/*" max-size="5MB" /]
+  accept="image/*" /]
 ```
 
 ```
@@ -630,6 +633,32 @@ Single file picker. The renderer uploads the file to an endpoint configured by t
 ```
 
 > The returned URL comes from the ChatApp's storage service; it is not URL-encoded because it is already a valid ASCII-safe URL.
+
+**`capture` (v1.8).** When present, `capture` asks the renderer to open the device's native acquisition UI directly instead of the file browser. It does **not** define the medium — that is still the job of `accept`. The combination of both is what selects the experience:
+
+| `accept`   | `capture`       | Resulting UI                          |
+| ---------- | --------------- | ------------------------------------- |
+| `image/*`  | `user`          | Camera, front lens (selfie).          |
+| `image/*`  | `environment`   | Camera, rear lens.                     |
+| `audio/*`  | `true`          | Audio recorder.                        |
+| `video/*`  | `true`          | Video recorder.                        |
+| any        | (absent)        | Standard file picker (default).        |
+
+```
+[PML:input id="selfie" type="file" label="Take a photo of yourself"
+  accept="image/*" capture="user" /]
+
+[PML:input id="receipt" type="file" label="Photograph the receipt"
+  accept="image/*" capture="environment" /]
+
+[PML:input id="voice-note" type="file" label="Record a voice message"
+  accept="audio/*" capture="true" /]
+
+[PML:input id="clip" type="file" label="Record a video"
+  accept="video/*" capture="true" /]
+```
+
+> `capture` is a **non-binding hint**. A renderer on a device without the requested hardware (e.g. a desktop without a camera) ignores `capture` and falls back to the standard file picker. The interaction output is identical in both cases: the ChatApp uploads the artifact and emits `[[INTERACTION id="..." value="<url>"]]`. The values `user`, `environment`, and `true` are reserved and are never translated.
 
 ---
 
@@ -1619,7 +1648,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.7 — May 2026 (this specification)
+PML v1.8 — May 2026 (this specification)
+  - New optional `capture` attribute on input type="file"
+  - Hint to open the device camera / audio recorder / video recorder directly
+  - Medium is still selected by `accept`; `capture` only chooses the acquisition UI
+  - Values: user (front camera), environment (rear camera), true (direct capture)
+  - Non-binding hint: renderers without the hardware fall back to the file picker
+  - Output contract unchanged: same [[INTERACTION id="..." value="<url>"]]
+```
+
+```
+PML v1.7 — May 2026
   - New auxiliary `rule` component inside `form`
   - Conditional effective visibility and enabled state for form children
   - Value conditions with `when-<field-id>="expected-value"`
@@ -1697,7 +1736,7 @@ PML v1.1 — April 2026
 
 ### 12.3 Candidates for future versions
 
-**v1.8 — form extensions** (compatible, additive):
+**v1.9 — form extensions** (compatible, additive):
 
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1705,7 +1744,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.9+ — new components:**
+**v1.10+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -1848,7 +1887,6 @@ This section lists all normative differences. The intent is that an agent or ren
 | `confirmLabel`   | `confirm-label`   |
 | `cancelLabel`    | `cancel-label`    |
 | `amPm`           | `am-pm`           |
-| `maxSize`        | `max-size`        |
 
 ### C.2 `[[INTERACTION]]` format
 
@@ -2168,4 +2206,59 @@ Correctness is derived from the component's own constraints (`required`, `valida
 
 ---
 
-_PML v1.7 — PEPPO Platform — May 2026_
+## Appendix H — Migration v1.7 → v1.8
+
+v1.8 is **purely additive**: it introduces a single optional attribute, `capture`, on `input type="file"`. There are no syntax changes, no renames, and no changes to any interaction format.
+
+### H.1 New attribute: `capture`
+
+`capture` is optional and valid only on `input type="file"`. It hints to the renderer that it should open the device's native acquisition UI (camera, audio recorder, video recorder) directly, instead of the file browser.
+
+```pml
+[PML:input id="selfie" type="file" label="Take a photo of yourself"
+  accept="image/*" capture="user" /]
+```
+
+### H.2 `capture` does not define the medium
+
+The medium is still selected by `accept`. `capture` only chooses the acquisition UI. The pairing is what selects the experience:
+
+| `accept`   | `capture`     | Resulting UI                |
+| ---------- | ------------- | --------------------------- |
+| `image/*`  | `user`        | Front camera (selfie).      |
+| `image/*`  | `environment` | Rear camera.                |
+| `audio/*`  | `true`        | Audio recorder.             |
+| `video/*`  | `true`        | Video recorder.             |
+| any        | (absent)      | Standard file picker.       |
+
+### H.3 Non-binding hint and fallback
+
+`capture` is advisory. A renderer on a device without the requested hardware ignores it and falls back to the standard file picker. No error is raised.
+
+### H.4 Output contract unchanged
+
+Whether the artifact came from the camera, a recorder, or the file browser, the ChatApp uploads it and emits the same interaction:
+
+```
+[[INTERACTION id="selfie" value="https://cdn.peppo.com/uploads/abc123.jpg"]]
+```
+
+### H.5 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| v1.8 agent → v1.8 renderer | Expected case: the renderer honors `capture` when the hardware is available. |
+| v1.8 agent → v1.7 renderer | The older renderer does not understand `capture` and drops it as an unknown attribute ("unknown attributes are dropped" rule); the file picker is shown. The interaction output is unchanged. |
+| v1.7 agent → v1.8 renderer | Works normally: without `capture`, the file picker is shown, exactly as before. |
+
+### H.6 What is NOT in v1.8
+
+- New input subtypes for capture (no `type="camera"`, `type="audio"`, etc.).
+- New standalone components for camera/recorder.
+- Capture constraints (duration limits, resolution, quality).
+- Multi-file or burst capture.
+- Changes to the `media` or `image` passive components.
+
+---
+
+_PML v1.8 — PEPPO Platform — May 2026_
