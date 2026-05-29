@@ -1,9 +1,11 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.6.1
+## Complete specification v1.7
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.7 (May 2026).** Adds conditional form behavior with the auxiliary `rule` component. `PML:rule` is valid only as a direct child of `form` and can control the effective visibility or enabled state of form children with simple AND conditions. Rules may compare current serialized values via `when-<field-id>="..."` or renderer-owned component correctness via `state-<field-id>="correct|incorrect"`. Validation and `required` apply only to active children (`effective-visible=true` and `effective-enabled=true`). See §6.5.
+>
 > **v1.6.1 (May 2026).** Adds native cancel action to `form`: `cancel-label` attribute + empty-bracket cancel interaction `[[INTERACTION id="form-id"]]`. When present, the ChatApp renders a secondary cancel button alongside the submit button. Cancelling emits an interaction with only the `id` attribute (no `value`, no `field-*`), allowing the agent to distinguish cancel from submit. See §6.5.
 >
 > **v1.6 (May 2026).** Cleans up the serialization of the multi-field bracket introduced in v1.5: a `form`'s fields are now serialized with the `field-*` prefix (`field-name="..."`, `field-email="..."`). This eliminates the artificial rule "do not use `id="id"` or `id="value"` in form children" and makes the boundary between bracket metadata and form fields explicit. The declarative IDs of children remain unrestricted (any valid kebab-case). v1.6 is **additive**: v1.6 renderers accept v1.5 brackets without the prefix during the transition; v1.5 renderers that receive a v1.6 bracket ignore the unknown `field-*` attributes and process only `id`. See Appendix E.
@@ -59,6 +61,7 @@
 - [Appendix D — Migration v1.4 → v1.5](#appendix-d--migration-v14--v15)
 - [Appendix E — Migration v1.5 → v1.6](#appendix-e--migration-v15--v16)
 - [Appendix F — Migration v1.6 → v1.6.1](#appendix-f--migration-v16--v161)
+- [Appendix G — Migration v1.6.1 → v1.7](#appendix-g--migration-v161--v17)
 
 ---
 
@@ -238,13 +241,14 @@ Hi Pedro, what would you like to do today?
 - `toggle` — Binary switch
 - `choice` — Selection between options
 - `confirm` — Confirmation dialog
-- `form` — Field container with single submit (emits a single multi-field `[[INTERACTION]]`)
+- `form` — Field container with single submit, optional cancel, and optional conditional rules
 
 **Auxiliary components (only valid inside their container):**
 
 - `opt` — Option inside `choice`
 - `fact` — Entry inside `facts`
 - `dtrow`, `dtcol` — Row and cell inside `dtable`
+- `rule` — Conditional behavior rule inside `form`
 
 Information components render automatically in the chat flow. Interaction components require special handling: the ChatApp captures the user action and emits `[[INTERACTION]]` to the agent.
 
@@ -773,7 +777,7 @@ Confirmation dialog. Renders a modal with two actions: accept or cancel.
 
 ### 6.5 form
 
-Field container with **submit and optional cancel**. A valid `form` must contain at least one interactive child (`input`, `toggle`, or `choice`). It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each interactive child (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
+Field container with **submit, optional cancel, and optional conditional rules**. A valid `form` must contain at least one interactive child (`input`, `toggle`, or `choice`). It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each active interactive child (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
 
 #### Attributes
 
@@ -789,7 +793,8 @@ Field container with **submit and optional cancel**. A valid `form` must contain
 | -------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
 | Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `raw`          | Yes     | For labels, instructions, visual separators, narrative sections.                                 |
 | Passive container: `facts`                                                       | Yes     | Useful to show readonly summaries before submit (`form > facts > fact` = 3 levels).              |
-| Interactives: `input` (all subtypes), `toggle`, `choice` (single and multi)      | Yes     | Each one contributes **one attribute** `field-<id>` to the final `[[INTERACTION]]` (§7.3).       |
+| Interactives: `input` (all subtypes), `toggle`, `choice` (single and multi)      | Yes     | Each active one contributes **one attribute** `field-<id>` to the final `[[INTERACTION]]` (§7.3). |
+| Auxiliary: `rule`                                                                | Yes     | Declares conditional visibility/enabled behavior for direct form children. Does not render or emit interactions. |
 | `dtable`                                                                         | **No**  | Would exceed the maximum depth of 3 (`form > dtable > dtrow > dtcol` = 4).                       |
 | `confirm`                                                                        | **No**  | Confirm is a self-contained modal action; mixing it with form creates submit ambiguity.          |
 | Nested `form`                                                                    | **No**  | v1.5 forbids nested forms; the agent must use separate flows.                                    |
@@ -800,24 +805,148 @@ A `form` is valid only if it contains at least one direct interactive child: `in
 
 Passive children (`text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`) may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
 
+#### Conditional behavior: PML:rule
+
+`PML:rule` declares conditional runtime behavior inside a `form`. It is an auxiliary, non-visual, self-closing component: it does not render, does not emit `[[INTERACTION]]`, and is valid only as a direct child of `form`.
+
+`PML:rule` is intended for Peppo Agents and the Agent Creator to author conditional form behavior declaratively, for Peppo Runner to preserve and deliver the rules, and for the ChatApp renderer to evaluate them during `first_rendering` and `live_capture`.
+
+```pml
+[PML:rule
+  action="visible"
+  targets="text-informacion-contacto,contacto"
+  when-departamento="rrhh"
+  when-aceptar-condiciones="true" /]
+```
+
+Interpretation:
+
+```text
+text-informacion-contacto and contacto are visible only when:
+departamento == rrhh
+AND aceptar-condiciones == true
+```
+
+##### Attributes
+
+| Attribute              | Required | Type                    | Description |
+| ---------------------- | -------- | ----------------------- | ----------- |
+| `action`               | Yes      | `visible` / `enabled`   | Effective state controlled by the rule. |
+| `targets`              | Yes      | comma-separated IDs     | Direct non-`rule` children of the same `form` affected by the rule. |
+| `when-<field-id>`      | No       | string                  | Value condition. The source must be an interactive child of the same `form`. |
+| `state-<field-id>`     | No       | `correct` / `incorrect` | Runtime correctness condition. The source must be an interactive child of the same `form`. |
+
+At least one `when-*` or `state-*` condition is required. Multiple conditions are combined with AND. `PML:rule` has no OR, nested expressions, arithmetic, regex, scripts, or custom formulas.
+
+##### Actions
+
+`action="visible"` controls effective visibility. When the rule conditions are true, the targets are visible; when they are false, the targets are hidden. `rule` components themselves cannot be targets.
+
+`action="enabled"` controls effective enabled state. When the rule conditions are true, interactive targets are enabled; when they are false, they are disabled. Passive targets do not have enabled behavior; if an `enabled` rule targets a passive component, the renderer ignores that target and logs a warning.
+
+If multiple rules control the same `target + action`, all of them must evaluate to true for the target to keep that effective state. This keeps conflict resolution deterministic and avoids "last rule wins" ordering.
+
+Rules combine with the component's declared base state. `visible="false"` remains hidden even if a visible rule is true, and `disabled="true"` remains disabled even if an enabled rule is true. If no rule controls a given action for a target, the target keeps its declared/default state.
+
+##### Value conditions: `when-<field-id>`
+
+`when-<field-id>="expected-value"` compares the current serialized value of the source component with the expected value.
+
+- For `choice`, the value is the selected option id. For `choice multi="true"`, the condition is true when the expected option id is selected.
+- For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
+- For `input`, the value is the current serialized input value. For validation-shaped conditions, prefer `state-<field-id>` instead of literal value comparisons.
+
+Example:
+
+```pml
+[PML:rule
+  action="enabled"
+  targets="contacto"
+  when-departamento="rrhh"
+  when-aceptar-condiciones="true" /]
+```
+
+##### Component correctness: `state-<field-id>`
+
+Component correctness is a renderer-owned runtime state. A component is `correct` when its current value satisfies the constraints declared on the component itself; otherwise it is `incorrect`.
+
+Only two correctness states are defined:
+
+```text
+correct
+incorrect
+```
+
+Example:
+
+```pml
+[PML:input id="edad" type="number" min="10" max="15" /]
+
+[PML:markdown id="resumen-edad"]Age is in the accepted range.[/PML:markdown]
+
+[PML:rule
+  action="visible"
+  targets="resumen-edad"
+  state-edad="correct" /]
+```
+
+If `edad` currently contains `12`, it is `correct` and `resumen-edad` becomes visible. If `edad` contains `8`, it is `incorrect` and `resumen-edad` stays hidden.
+
+Correctness lets rules depend on native component validation without duplicating `min`, `max`, `validate`, date formats, file restrictions, or other component-specific logic inside the rule. A literal value such as `when-code="state:correct"` is always treated as a literal value; runtime correctness must use `state-code="correct"`.
+
+##### Effective state, validation, and serialization
+
+The renderer computes two effective states for every form child:
+
+```text
+effective-visible
+effective-enabled
+```
+
+`effective-visible` starts from the `visible` attribute (default `true`). `effective-enabled` starts from the inverse of `disabled` (default enabled). Matching `rule` components can only narrow these states.
+
+An interactive child is active only when both are true:
+
+```text
+active = effective-visible AND effective-enabled
+```
+
+Validation applies only to active interactive children. Therefore, a hidden or disabled child does not block submit even if it declares `required="true"` or any other validation attribute.
+
+Submit serialization includes only active interactive children. Inactive children do not contribute `field-*` attributes. The agent must interpret a missing `field-<id>` in a conditional form as "not active in the submitted state", not as an empty answer.
+
+The renderer evaluates rules before the initial form is shown, using declared initial values/defaults, and re-evaluates them whenever a source value changes.
+
+Recommended renderer order:
+
+```text
+current values
+→ component correctness
+→ PML:rule evaluation
+→ effective visible/enabled state
+→ submit validation
+→ interaction serialization
+```
+
 #### Submit and cancel behavior
 
 **Submit path:**
 
 1. The user freely edits the form's interactive children. **While the form is active, its children do not emit individual `[[INTERACTION]]`** — their values stay in the ChatApp's local state.
 2. The user presses the submit button (text: `submit-label`).
-3. The ChatApp runs **local validation** on all interactive children:
+3. The ChatApp evaluates `PML:rule` components and computes the effective state of all form children.
+4. The ChatApp runs **local validation** on all active interactive children:
    - `required="true"` → value must not be empty.
    - `validate="<regex>"` → value must match (input text).
    - `min` / `max` → numeric range (input number, currency).
    - `min-length` / `max-length` → length range (input text).
    - The specific type (date, datetime, location, etc.) must be well-formed.
-4. **If any validation fails**:
+5. **If any validation fails**:
    - The ChatApp injects `error="..."` on each failed child (using the component's `error-message` if defined, or a generic renderer default).
    - **No** `[[INTERACTION]]` is emitted. The form remains in `live_capture`.
    - The user corrects and presses submit again.
-5. **If all validations pass**:
-   - The ChatApp emits a single `[[INTERACTION]]` with the form's `id` and a `field-<sub-id>` attribute for each interactive child.
+6. **If all validations pass**:
+   - The ChatApp emits a single `[[INTERACTION]]` with the form's `id` and a `field-<sub-id>` attribute for each active interactive child.
    - The form transitions to `final_rendering`.
 
 **Cancel path** (only when `cancel-label` is present):
@@ -839,7 +968,7 @@ Passive children (`text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts
 
 #### Interaction serialization
 
-For a form with interactive children `child-1`, `child-2`, ..., `child-n` with values `v1`, `v2`, ..., `vn`:
+For a form with active interactive children `child-1`, `child-2`, ..., `child-n` with values `v1`, `v2`, ..., `vn`:
 
 ```
 [[INTERACTION id="form-id" field-child-1="v1" field-child-2="v2" ... field-child-n="vn"]]
@@ -847,8 +976,9 @@ For a form with interactive children `child-1`, `child-2`, ..., `child-n` with v
 
 **Precise rules:**
 
-- **Each interactive child of the form contributes exactly one attribute** prefixed with `field-` to the bracket. The suffix is the child's declared `id`. The **value** is the captured value, URL-encoded per §7.2 when it comes from free user text.
-- **All interactive children are always included**, even if they are `disabled`, `readonly`, or the user did not touch them (in which case the value is the empty string `""` or the initial `value` declared by the agent).
+- **Each active interactive child of the form contributes exactly one attribute** prefixed with `field-` to the bracket. The suffix is the child's declared `id`. The **value** is the captured value, URL-encoded per §7.2 when it comes from free user text.
+- **Inactive interactive children are omitted**. A child is inactive when its effective visibility or effective enabled state is false.
+- **All active interactive children are always included**, even if they are `readonly` or the user did not touch them (in which case the value is the empty string `""` or the initial `value` declared by the agent).
 - For `choice multi="true"`, selected ids are serialized **comma-separated** inside the value (same as a standalone choice): `field-days="mon,tue,wed"`.
 - For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
 - The order of the attributes in the serialization should respect the order of the children in the form (legibility recommendation; not semantic).
@@ -860,7 +990,7 @@ For a form with interactive children `child-1`, `child-2`, ..., `child-n` with v
 | ------------------------ | ------------------------------------------------------------------ |
 | `id`                     | Identifies the root component that originated the interaction.    |
 | `value`                  | (Single-value mode) Value captured from an atomic component.      |
-| `field-<sub-id>`         | (Multi-field mode) Value captured from the form's `<sub-id>` child. |
+| `field-<sub-id>`         | (Multi-field mode) Value captured from the form's active `<sub-id>` child. |
 | (no other attributes)    | (Cancel mode) Form was cancelled — `id` only, no data.            |
 | Other bare names         | Reserved for future metadata extensions. **Do not use.**          |
 
@@ -986,12 +1116,13 @@ The form is **a single task**. It goes through the full lifecycle like any other
 #### Edge cases
 
 - **Form with no interactive children** (only passive content + submit): invalid. The renderer omits submit/cancel controls, renders the passive content as narrative/plain flow, and logs a warning. Use `choice` for a CTA or `confirm` for explicit acceptance/cancellation.
-- **`disabled` child**: is included in the interaction with its current value (the initial `value` or empty). The user cannot modify it, but the agent receives the value for field consistency.
-- **`readonly` child**: same as disabled regarding serialization; visually it appears editable but does not accept changes.
-- **Optional child with no initial value**: is included with value `""` in the serialization.
+- **`disabled` child**: is not active; it does not validate, does not block `required`, and does not contribute to submit serialization. Use `readonly` for immutable values that must still be submitted.
+- **`readonly` child**: remains active regarding validation and serialization; visually it appears editable but does not accept changes.
+- **Optional active child with no initial value**: is included with value `""` in the serialization.
 - **Duplicate IDs across children**: the renderer applies the rules from §8.3 (renders the first, ignores the rest; the second does not contribute to the interaction).
 - **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`): the renderer treats it as plain text and omits it from the interaction. Logs a warning.
 - **Submit with zero valid interactive children**: invalid form; no `[[INTERACTION]]` is emitted.
+- **Conditional form with zero active interactive children at submit time**: invalid submit state; no `[[INTERACTION]]` is emitted and the renderer shows a generic form-level error.
 - **v1.5 ↔ v1.6 compatibility**: a v1.6 renderer accepts brackets without a prefix (v1.5 format) during the transition period and processes them as if they carried an implicit `field-`. A v1.5 agent sent to a v1.6 renderer still works. A v1.6 agent sent to a v1.5 renderer emits `field-*` attributes that the v1.5 renderer silently ignores ("unknown attributes are dropped" rule); the agent receives the degraded interaction without fields. For maximum compatibility, the agent should negotiate version via the envelope metadata before choosing the format to emit.
 
 ---
@@ -1059,7 +1190,7 @@ Agent decodes:     "Pedro & María"
 
 The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to components that capture multiple fields in a single action. The v1.6+ generative rule for submit interactions is:
 
-> The bracket `[[INTERACTION ...]]` admits **one or more `field-<sub-id>` attributes** in addition to `id`. Each `field-*` attribute corresponds to a field of the compound component: the suffix is the sub-component's `id`, the value is the captured data.
+> The bracket `[[INTERACTION ...]]` admits **one or more `field-<sub-id>` attributes** in addition to `id`. Each `field-*` attribute corresponds to an active field of the compound component: the suffix is the sub-component's `id`, the value is the captured data.
 
 **Canonical form (single value — input, choice, toggle, confirm):**
 
@@ -1090,11 +1221,11 @@ The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to compo
 **Rules for the multi-field case:**
 
 1. `id` always points to the root component (e.g. the form).
-2. Each field of the compound component is serialized as `field-<sub-id>="<value>"`. The `<sub-id>` is the declarative `id` of the child, untransformed.
+2. Each active field of the compound component is serialized as `field-<sub-id>="<value>"`. The `<sub-id>` is the declarative `id` of the child, untransformed.
 3. Values follow the same URL encoding rules of §7.2.
 4. If a sub-component returns multiple selections (an embedded `choice multi="true"`), its value is serialized with commas: `field-days="mon,tue,wed"`.
 5. **No forbidden names** for child IDs: the `field-*` namespace isolates data from bracket metadata.
-6. **(v1.6.1)** A valid `form` submit includes at least one `field-*` attribute, because a valid `form` must contain at least one interactive child.
+6. **(v1.7)** A valid conditional `form` submit includes at least one `field-*` attribute, because a valid submit state must contain at least one active interactive child.
 
 > **v1.5 ↔ v1.6 compatibility.** v1.5 had introduced the `form` component emitting fields as bare attributes (`name="..."`), reserving the names `id` and `value`. v1.6 isolates them under the `field-*` prefix and removes the reservation. v1.6 renderers accept both formats during the transition; v1.6 agents always emit with the prefix. See Appendix E.
 
@@ -1215,7 +1346,7 @@ The renderer updates the same component instead of adding a new one.
 | Container            | May directly contain                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
 | (message root)       | Any standalone component                                                                                        |
-| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `raw`), `facts`, `input`, `toggle`, `choice`  |
+| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `raw`), `facts`, `input`, `toggle`, `choice`, `rule` |
 | `choice`             | `opt` (one or more)                                                                                             |
 | `facts`              | `fact` (one or more)                                                                                            |
 | `dtable`             | `dtrow` (one or more)                                                                                           |
@@ -1231,6 +1362,7 @@ The renderer updates the same component instead of adding a new one.
 4. `form` **does not allow**: `dtable` (would exceed depth 3), `confirm` (modal incompatible with unified submit), or nested `form`.
 5. **(v1.6)** There are no forbidden names for the `id`s of form children. The `field-*` prefix of the multi-field bracket (§7.3) isolates the field namespace from the metadata one, so `id="id"`, `id="value"` or `id="error"` on children are valid and serialize to `field-id`, `field-value`, `field-error`. This repeals the v1.5 reserved-IDs rule.
 6. **(v1.6.1)** A `form` must contain at least one direct interactive child (`input`, `toggle`, or `choice`). Passive-only forms are invalid.
+7. **(v1.7)** `rule` is valid only as a direct child of `form`; it must be self-closing and cannot contain child components.
 
 ### 8.3 ID rules
 
@@ -1255,6 +1387,7 @@ The renderer updates the same component instead of adding a new one.
 8. **In `form`**: include at least one interactive child (`input`, `toggle`, or `choice`) and give a unique `id` to each interactive child (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`. **(v1.6)** Child IDs are free: there are no reserved names anymore.
 9. **When re-emitting a `form`** after a server error: use the same `id` of the form and populate `value="..."` on each child with the last known user value; add `error="..."` only on failed children (§7.6).
 10. **When emitting multi-field interactions (v1.6)**: always use the `field-` prefix in the bracket attribute names (`field-name="..."`, not `name="..."`). The unprefixed v1.5 format is deprecated and v1.6 renderers accept it only as a temporary alias.
+11. **When using `rule` inside `form`**: use only `action="visible"` or `action="enabled"`, reference direct children of the same form, and express conditions with `when-<field-id>="..."` or `state-<field-id>="correct|incorrect"`.
 
 ### 9.2 Error-tolerant generation
 
@@ -1433,7 +1566,7 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 
 **confirm:** `title` that names the decision (not just "Confirm"); `message` with the consequence in one sentence; `style="danger"` only for destructive actions; the cancel button is always visible and emits `[[INTERACTION ...]]` just like the confirm one.
 
-**form:** keep few fields per form (ideally ≤7); clear labels above each field; group narratively with `text` or `divider`; submit button at the end, full-width, with `submit-label` that describes the action ("Create account", "Confirm order"); do not use for destructive actions (that is `confirm`); show validation errors inline right below each failed field.
+**form:** keep few fields per form (ideally ≤7); clear labels above each field; group narratively with `text` or `divider`; submit button at the end, full-width, with `submit-label` that describes the action ("Create account", "Confirm order"); do not use for destructive actions (that is `confirm`); show validation errors inline right below each failed field; keep `rule` sets small and recalculate conditional state immediately when a source value changes.
 
 ---
 
@@ -1454,6 +1587,10 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | Unreadable PML                                         | High     | Render as plain text                                                                                                                  |
 | Forbidden child inside `form` (`confirm`, `dtable`, `form`) | Medium | Omit from the form; does not contribute to `[[INTERACTION]]`; log warning                                                              |
 | `form` without any interactive child (`input`, `toggle`, `choice`) | Medium | Omit submit/cancel controls, render passive content as narrative/plain flow, log warning                                                |
+| Malformed `rule` (missing `action`, missing `targets`, no conditions, unsupported action/state) | Medium | Ignore the rule, render the form without that conditional behavior, log warning                                                         |
+| `rule` references unknown source or target IDs | Medium | Ignore the missing references; if the rule has no valid targets or no valid conditions left, ignore the rule and log warning             |
+| `rule` targets another `rule` | Low | Ignore that target and log warning                                                                                                      |
+| `rule action="enabled"` targets passive components | Low | Ignore those passive targets and log warning                                                                                            |
 | Multi-field bracket with attributes without `field-` prefix (v1.5 format) | Low | Accept as a temporary alias in v1.6 renderers; log migration warning. v1.6 agents must always emit `field-*`.                          |
 | Multi-field bracket with `field-*` attributes sent to a v1.5 parser | Low | The v1.5 parser silently ignores them; the agent receives the degraded interaction (only `id`). Negotiate version via the envelope.   |
 
@@ -1482,7 +1619,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.6.1 — May 2026 (this specification)
+PML v1.7 — May 2026 (this specification)
+  - New auxiliary `rule` component inside `form`
+  - Conditional effective visibility and enabled state for form children
+  - Value conditions with `when-<field-id>="expected-value"`
+  - Runtime correctness conditions with `state-<field-id>="correct|incorrect"`
+  - Validation and `required` apply only to active children
+  - Submit serialization includes only active interactive children
+```
+
+```
+PML v1.6.1 — May 2026
   - Native cancel action for `form` via the optional `cancel-label` attribute
   - When present, the ChatApp renders a secondary cancel button alongside submit
   - Cancel emits an empty interaction: [[INTERACTION id="form-id"]]
@@ -1550,7 +1697,7 @@ PML v1.1 — April 2026
 
 ### 12.3 Candidates for future versions
 
-**v1.7 — form extensions** (compatible, additive):
+**v1.8 — form extensions** (compatible, additive):
 
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1558,7 +1705,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.8+ — new components:**
+**v1.9+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -1593,7 +1740,8 @@ PML v1.1 — April 2026
 │ choice         │ interactive      │ Selection between options                │
 │ opt            │ interactive·child│ Individual option of a choice            │
 │ confirm        │ interactive      │ Confirmation dialog                      │
-│ form           │ interactive      │ Container with single submit (multi-field)│
+│ form           │ interactive      │ Container with submit/rules (multi-field)│
+│ rule           │ auxiliary·child  │ Conditional form behavior                │
 └────────────────┴──────────────────┴─────────────────────────────────────────┘
 ```
 
@@ -1636,7 +1784,7 @@ std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "input"    | "toggle"   | "choice" | "confirm"
                  | "form" ;
 
-aux_component    = "opt" | "fact" | "dtrow" | "dtcol" ;
+aux_component    = "opt" | "fact" | "dtrow" | "dtcol" | "rule" ;
 
 (* ─── Attributes ───────────────────────────────────────────────────── *)
 attr_list        = { WS attr } ;
@@ -1669,9 +1817,10 @@ WS_eq            = "=" ;
 (*   dtrow   → dtcol                                                     *)
 (*   raw     → plain text (parser disabled)                              *)
 (*   form    → text | markdown | divider | image | media | raw           *)
-(*             | facts | input | toggle | choice                         *)
+(*             | facts | input | toggle | choice | rule                  *)
 (*             (FORBIDDEN: dtable, confirm, nested form)                  *)
 (*             (REQUIRES at least one input, toggle, or choice)           *)
+(*             (rule is self-closing and only valid directly in form)      *)
 (*   rest    → no child components allowed                               *)
 (*                                                                       *)
 (* Maximum depth: 3 levels from the message root.                        *)
@@ -1954,4 +2103,69 @@ This makes the empty bracket unambiguous in v1.6.1: `[[INTERACTION id="form-id"]
 
 ---
 
-_PML v1.6.1 — PEPPO Platform — May 2026_
+## Appendix G — Migration v1.6.1 → v1.7
+
+v1.7 extends `form` with declarative conditional behavior via the new auxiliary `rule` component.
+
+### G.1 New auxiliary component: `rule`
+
+`rule` is valid only as a direct child of `form`. It is self-closing, non-visual, and does not emit interactions.
+
+```pml
+[PML:rule
+  action="visible"
+  targets="contacto"
+  when-departamento="rrhh"
+  state-edad="correct" /]
+```
+
+### G.2 New effective state model
+
+Renderers compute:
+
+```text
+effective-visible
+effective-enabled
+active = effective-visible AND effective-enabled
+```
+
+Validation and `required` apply only to active interactive children.
+
+### G.3 Serialization change for conditional forms
+
+In v1.7, submit serialization includes only active interactive children. Inactive children do not contribute `field-*` attributes.
+
+This means that, in a conditional form, a missing `field-<id>` means the child was not active in the submitted state. It does not mean the user submitted an empty value.
+
+### G.4 Component correctness
+
+Renderers expose two correctness states to `rule` conditions:
+
+```text
+correct
+incorrect
+```
+
+Correctness is derived from the component's own constraints (`required`, `validate`, `min`, `max`, type format, file restrictions, etc.) and is referenced with `state-<field-id>="correct"` or `state-<field-id>="incorrect"`.
+
+### G.5 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| v1.7 agent → v1.7 renderer | Expected case: the renderer evaluates `rule` components and submits only active interactive children. |
+| v1.7 agent → v1.6.1 renderer | Not recommended. The older renderer does not understand `rule`; conditional behavior is lost. Agents should negotiate `pml-version` before emitting `rule`. |
+| v1.6.1 agent → v1.7 renderer | Works normally for forms that do not rely on disabled children being serialized. In v1.7, disabled/inactive children are omitted; use `readonly` for immutable values that must still be submitted. |
+
+### G.6 What is NOT in v1.7
+
+- OR conditions.
+- Nested rule groups.
+- Arithmetic expressions.
+- Regex inside `rule`.
+- Cross-field formulas.
+- Custom scripts.
+- New standalone interactive components.
+
+---
+
+_PML v1.7 — PEPPO Platform — May 2026_
