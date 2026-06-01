@@ -1,9 +1,11 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.8
+## Complete specification v1.9
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.9 (June 2026).** Adds the optional `source` attribute to `input type="contact"`. It describes where the phone number should come from: `self` (the user's own number), `manual` (typed number, default), or `contacts` (pick from the device address book). The output contract is unchanged — the ChatApp still emits a single phone value as `[[INTERACTION id="..." value="..."]]`. `source` is a non-binding hint: renderers without the requested capability fall back to manual entry. See §6.1.4 and Appendix I.
+>
 > **v1.8 (May 2026).** Adds the optional `capture` attribute to `input type="file"`. It is a hint that instructs the ChatApp to open the device's camera, audio recorder, or video recorder directly instead of the file browser. The captured medium is still determined by `accept` (`image/*`, `audio/*`, `video/*`); `capture` only chooses the acquisition UI. Accepted values: `user` (front camera), `environment` (rear camera), `true` (direct capture, no camera preference). The output contract is unchanged — the ChatApp uploads the artifact and emits the same `[[INTERACTION id="..." value="<url>"]]`. `capture` is a non-binding hint: renderers without the requested hardware fall back to the standard file picker. See §6.1.9 and Appendix H.
 >
 > **v1.7 (May 2026).** Adds conditional form behavior with the auxiliary `rule` component. `PML:rule` is valid only as a direct child of `form` and can control the effective visibility or enabled state of form children with simple AND conditions. Rules may compare current serialized values via `when-<field-id>="..."` or renderer-owned component correctness via `state-<field-id>="correct|incorrect"`. Validation and `required` apply only to active children (`effective-visible=true` and `effective-enabled=true`). See §6.5.
@@ -65,6 +67,7 @@
 - [Appendix F — Migration v1.6 → v1.6.1](#appendix-f--migration-v16--v161)
 - [Appendix G — Migration v1.6.1 → v1.7](#appendix-g--migration-v161--v17)
 - [Appendix H — Migration v1.7 → v1.8](#appendix-h--migration-v17--v18)
+- [Appendix I — Migration v1.8 → v1.9](#appendix-i--migration-v18--v19)
 
 ---
 
@@ -539,17 +542,34 @@ With `multiline="true"`:
 
 #### 6.1.4 input type="contact"
 
-Captures the user's phone number using the ChatApp's native mechanisms (contact picker, autofill, etc.). It has no additional attributes.
+Captures a phone number using the ChatApp's native mechanisms. The optional `source` attribute describes where the phone number should come from.
+
+| Attribute | Required | Type                         | Description                                                                 |
+| --------- | -------- | ---------------------------- | --------------------------------------------------------------------------- |
+| `source`  | No       | `self` / `manual` / `contacts` | **(v1.9)** Contact source. Default: `manual`.                               |
+
+`source` values:
+
+| `source`   | Meaning                                  | Expected UI                                                        |
+| ---------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| `self`     | The user's own phone number.             | Use account/device autofill when available; otherwise manual entry. |
+| `manual`   | A phone number typed by the user.        | Phone-number keyboard. Default.                                    |
+| `contacts` | A phone number selected from the address book. | Native contact picker when available; otherwise manual entry.       |
 
 ```
 [PML:input id="phone" type="contact" label="Tap to share your phone" required="true" /]
 ```
 
 ```
+[PML:input id="recipient-phone" type="contact" label="Choose a recipient"
+  source="contacts" /]
+```
+
+```
 [[INTERACTION id="phone" value="%2B15551234567"]]
 ```
 
-> The leading `+` of an E.164 number is URL-encoded as `%2B`.
+> The leading `+` of an E.164 number is URL-encoded as `%2B`. `source` only affects the capture UI; the interaction value is always the selected or typed phone number. The values `self`, `manual`, and `contacts` are reserved and are never translated.
 
 #### 6.1.5 input type="date"
 
@@ -1648,7 +1668,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.8 — May 2026 (this specification)
+PML v1.9 — June 2026 (this specification)
+  - New optional `source` attribute on input type="contact"
+  - Describes where the phone number should come from
+  - Values: self (own number), manual (typed number), contacts (address book)
+  - Default: manual
+  - Non-binding hint: renderers without the requested capability fall back to manual entry
+  - Output contract unchanged: same [[INTERACTION id="..." value="..."]]
+```
+
+```
+PML v1.8 — May 2026
   - New optional `capture` attribute on input type="file"
   - Hint to open the device camera / audio recorder / video recorder directly
   - Medium is still selected by `accept`; `capture` only chooses the acquisition UI
@@ -1736,7 +1766,7 @@ PML v1.1 — April 2026
 
 ### 12.3 Candidates for future versions
 
-**v1.9 — form extensions** (compatible, additive):
+**v1.10 — form extensions** (compatible, additive):
 
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1744,7 +1774,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.10+ — new components:**
+**v1.11+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -2261,4 +2291,76 @@ Whether the artifact came from the camera, a recorder, or the file browser, the 
 
 ---
 
-_PML v1.8 — PEPPO Platform — May 2026_
+## Appendix I — Migration v1.8 → v1.9
+
+v1.9 is **purely additive**: it introduces a single optional attribute, `source`, on `input type="contact"`. There are no syntax changes, no renames, and no changes to any interaction format.
+
+### I.1 New attribute: `source`
+
+`source` is optional and valid only on `input type="contact"`. It tells the renderer which contact acquisition path the agent prefers.
+
+```pml
+[PML:input id="recipient-phone" type="contact" label="Choose a recipient"
+  source="contacts" /]
+```
+
+### I.2 Source values
+
+| `source`   | Meaning                                  | Expected UI                                                        |
+| ---------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| `self`     | The user's own phone number.             | Use account/device autofill when available; otherwise manual entry. |
+| `manual`   | A phone number typed by the user.        | Phone-number keyboard. Default.                                    |
+| `contacts` | A phone number selected from the address book. | Native contact picker when available; otherwise manual entry.       |
+
+### I.3 Default behavior
+
+When `source` is absent, the renderer behaves as if `source="manual"` were present.
+
+```pml
+[PML:input id="phone" type="contact" label="Phone" /]
+```
+
+is equivalent to:
+
+```pml
+[PML:input id="phone" type="contact" label="Phone" source="manual" /]
+```
+
+### I.4 Non-binding hint and fallback
+
+`source` is advisory. A renderer without access to the requested capability ignores it and falls back to manual entry. No error is raised.
+
+Examples:
+
+| Requested source | Fallback case                               | Fallback behavior       |
+| ---------------- | ------------------------------------------- | ----------------------- |
+| `self`           | No account/device phone number is available | Manual phone entry.     |
+| `contacts`       | Contact permission is denied or unavailable | Manual phone entry.     |
+
+### I.5 Output contract unchanged
+
+Whether the number came from the user's own profile, manual entry, or the address book, the ChatApp emits the same interaction:
+
+```
+[[INTERACTION id="phone" value="%2B15551234567"]]
+```
+
+### I.6 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| v1.9 agent → v1.9 renderer | Expected case: the renderer honors `source` when the capability is available. |
+| v1.9 agent → v1.8 renderer | The older renderer does not understand `source` and drops it as an unknown attribute ("unknown attributes are dropped" rule); manual contact entry is shown. The interaction output is unchanged. |
+| v1.8 agent → v1.9 renderer | Works normally: without `source`, the contact input behaves as `source="manual"`. |
+
+### I.7 What is NOT in v1.9
+
+- Multiple contact values.
+- Contact name, email, or address capture.
+- A contact object payload.
+- Contact permission policy beyond renderer-native behavior.
+- Changes to `form` serialization or validation.
+
+---
+
+_PML v1.9 — PEPPO Platform — June 2026_
