@@ -1,9 +1,11 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.9
+## Complete specification v1.10
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.10 (June 2026).** Adds the captured-resource echo-back contract for passive display. New information components: `attachment`, `map`, and `contact-card`. Agents must re-display captured files, locations, and phone numbers with rich passive components instead of lossy text facts: images use `image`, audio/video use `media`, documents use `attachment`, locations use `map`, and phone numbers use `contact-card`. Private resources are referenced by stable object refs (`images/...`, `files/...`), never signed URLs. The interaction wire format is unchanged. See §5.7-§5.10 and Appendix J.
+>
 > **v1.9 (June 2026).** Adds the optional `source` attribute to `input type="contact"`. It describes where the phone number should come from: `self` (the user's own number), `manual` (typed number, default), or `contacts` (pick from the device address book). The output contract is unchanged — the ChatApp still emits a single phone value as `[[INTERACTION id="..." value="..."]]`. `source` is a non-binding hint: renderers without the requested capability fall back to manual entry. See §6.1.4 and Appendix I.
 >
 > **v1.8 (May 2026).** Adds the optional `capture` attribute to `input type="file"`. It is a hint that instructs the ChatApp to open the device's camera, audio recorder, or video recorder directly instead of the file browser. The captured medium is still determined by `accept` (`image/*`, `audio/*`, `video/*`); `capture` only chooses the acquisition UI. Accepted values: `user` (front camera), `environment` (rear camera), `true` (direct capture, no camera preference). The output contract is unchanged — the ChatApp uploads the artifact and emits the same `[[INTERACTION id="..." value="<url>"]]`. `capture` is a non-binding hint: renderers without the requested hardware fall back to the standard file picker. See §6.1.9 and Appendix H.
@@ -39,8 +41,12 @@
     - [5.4 dtable](#54-dtable)
     - [5.5 image](#55-image)
     - [5.6 media](#56-media)
-    - [5.7 divider](#57-divider)
-    - [5.8 raw](#58-raw)
+    - [5.7 attachment](#57-attachment)
+    - [5.8 map](#58-map)
+    - [5.9 contact-card](#59-contact-card)
+    - [5.10 Captured-value echo-back contract](#510-captured-value-echo-back-contract)
+    - [5.11 divider](#511-divider)
+    - [5.12 raw](#512-raw)
 - [6. Interaction components](#6-interaction-components)
     - [6.1 input](#61-input)
     - [6.2 toggle](#62-toggle)
@@ -68,6 +74,7 @@
 - [Appendix G — Migration v1.6.1 → v1.7](#appendix-g--migration-v161--v17)
 - [Appendix H — Migration v1.7 → v1.8](#appendix-h--migration-v17--v18)
 - [Appendix I — Migration v1.8 → v1.9](#appendix-i--migration-v18--v19)
+- [Appendix J — Migration v1.9 → v1.10](#appendix-j--migration-v19--v110)
 
 ---
 
@@ -238,6 +245,9 @@ Hi Pedro, what would you like to do today?
 - `dtable` — Data table
 - `image` — Static image
 - `media` — Video or audio
+- `attachment` — Download/open card for a captured file
+- `map` — Location preview for captured coordinates
+- `contact-card` — Phone-number contact card
 - `divider` — Horizontal separator
 - `raw` — Unparsed text block (escape)
 
@@ -395,7 +405,84 @@ Video or audio player.
   poster="https://cdn.peppo.com/demo-poster.jpg" /]
 ```
 
-### 5.7 divider
+### 5.7 attachment
+
+Passive card for a captured or uploaded non-image file. It is used when the
+agent needs to re-display a file resource that should be opened or downloaded
+instead of rendered inline. Private resources are referenced by stable object
+refs (`files/...` or `images/...`), never by signed URLs.
+
+| Attribute | Required | Type   | Description                                      |
+| --------- | -------- | ------ | ------------------------------------------------ |
+| `url`     | Yes      | url/ref | File URL or private Storage object ref.          |
+| `name`    | Yes      | string | Human-readable filename.                         |
+| `mime`    | No       | string | MIME type when known.                            |
+| `label`   | No       | string | Field or domain label for the file.              |
+| `caption` | No       | string | Optional short caption or status.                |
+
+```
+[PML:attachment url="files/user/agent/report.pdf" name="report.pdf"
+  mime="application/pdf" label="Signed report" /]
+```
+
+### 5.8 map
+
+Passive preview for a captured location. It re-displays the `input
+type="location"` value without changing the interaction wire format.
+
+| Attribute | Required | Type   | Description                         |
+| --------- | -------- | ------ | ----------------------------------- |
+| `lat`     | Yes      | number | Latitude, decimal point.            |
+| `lng`     | Yes      | number | Longitude, decimal point.           |
+| `label`   | No       | string | Field or domain label.              |
+| `caption` | No       | string | Optional short caption or address.  |
+
+```
+[PML:map lat="19.4326" lng="-99.1332" label="Delivery location" /]
+```
+
+### 5.9 contact-card
+
+Passive card for a captured phone number. v1.10 does not change the contact
+interaction value: the agent only knows one phone number, not name, email,
+address, or a full contact object.
+
+| Attribute | Required | Type   | Description                      |
+| --------- | -------- | ------ | -------------------------------- |
+| `phone`   | Yes      | string | Captured phone number, decoded.  |
+| `label`   | No       | string | Field or domain label.           |
+| `caption` | No       | string | Optional short caption.          |
+
+```
+[PML:contact-card phone="+5215551234567" label="Recipient phone" /]
+```
+
+### 5.10 Captured-value echo-back contract
+
+When an agent confirms or recaps a value captured from an interactive component,
+it must re-display that value with the canonical passive representation below.
+This is display-only; the `[[INTERACTION]]` wire format is unchanged.
+
+| Captured input | Canonical echo-back |
+| -------------- | ------------------- |
+| `input type="file"` with image resource | `[PML:image url="<object-ref>" alt="<label>" caption="<label>" /]` |
+| `input type="file"` with audio/video resource | `[PML:media url="<object-ref>" type="audio|video" caption="<label>" /]` |
+| `input type="file"` with document/generic file | `[PML:attachment url="<object-ref>" name="<basename>" mime="<mime>" label="<label>" /]` |
+| `input type="location"` | `[PML:map lat="<lat>" lng="<lng>" label="<label>" /]` |
+| `input type="contact"` | `[PML:contact-card phone="<decoded-phone>" label="<label>" /]` |
+| text, number, currency, date, time, datetime | `facts` or `markdown`, formatted for humans. |
+| choice, toggle, confirm | `facts` or `markdown`, using the human-visible option/decision label. |
+
+For private Peppo resources, `url` is the immutable object reference
+(`images/...` or `files/...`). Agents must not emit signed URLs for echo-back
+because they expire and break immutable chat history.
+
+Forward compatibility: older renderers may ignore unknown components or render
+them as plain text. Therefore new components should include human-readable
+attributes (`label`, `name`, `phone`, `lat`, `lng`) so degraded output remains
+understandable.
+
+### 5.11 divider
 
 Separator line.
 
@@ -408,7 +495,7 @@ Separator line.
 [PML:divider label="Or continue with" /]
 ```
 
-### 5.8 raw
+### 5.12 raw
 
 Plain text block that turns off the PML parser. Allows displaying literal PML syntax without it being interpreted.
 
@@ -840,7 +927,7 @@ Field container with **submit, optional cancel, and optional conditional rules**
 
 | Child                                                                            | Allowed | Notes                                                                                            |
 | -------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
-| Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `raw`          | Yes     | For labels, instructions, visual separators, narrative sections.                                 |
+| Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw` | Yes | For labels, instructions, visual separators, narrative sections, and captured-value previews. |
 | Passive container: `facts`                                                       | Yes     | Useful to show readonly summaries before submit (`form > facts > fact` = 3 levels).              |
 | Interactives: `input` (all subtypes), `toggle`, `choice` (single and multi)      | Yes     | Each active one contributes **one attribute** `field-<id>` to the final `[[INTERACTION]]` (§7.3). |
 | Auxiliary: `rule`                                                                | Yes     | Declares conditional visibility/enabled behavior for direct form children. Does not render or emit interactions. |
@@ -852,7 +939,7 @@ Field container with **submit, optional cancel, and optional conditional rules**
 
 A `form` is valid only if it contains at least one direct interactive child: `input`, `toggle`, or `choice`.
 
-Passive children (`text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`) may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
+Passive children (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`) may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
 
 #### Conditional behavior: PML:rule
 
@@ -1395,7 +1482,7 @@ The renderer updates the same component instead of adding a new one.
 | Container            | May directly contain                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
 | (message root)       | Any standalone component                                                                                        |
-| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `raw`), `facts`, `input`, `toggle`, `choice`, `rule` |
+| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice`, `rule` |
 | `choice`             | `opt` (one or more)                                                                                             |
 | `facts`              | `fact` (one or more)                                                                                            |
 | `dtable`             | `dtrow` (one or more)                                                                                           |
@@ -1568,7 +1655,7 @@ task_controls     live interactive        component + feedback    (empty)
 
 ### 10.3 Applying the model to components
 
-- **Passive components** (text, markdown, image, media, facts, divider, dtable, raw) render **directly in `shared_history`**. They do not traverse `task_narrative` or `task_controls`.
+- **Passive components** (text, markdown, image, media, attachment, map, contact-card, facts, divider, dtable, raw) render **directly in `shared_history`**. They do not traverse `task_narrative` or `task_controls`.
 - **Interactive components** (input, toggle, choice, confirm, form) traverse the full lifecycle: `first_rendering` → `live_capture` → `final_rendering`.
 - In a `form`, the lifecycle applies to the form as **a unit**: children do not have their own lifecycle; they live inside the form's `task_controls` while `live_capture` lasts, and the final snapshot includes the full form with resolved values.
 
@@ -1604,6 +1691,12 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 **image:** always respect `alt`; reserve space before loading to prevent layout shifts.
 
 **media:** do not autoplay; show native controls; use `poster` when available.
+
+**attachment:** show `name`, `label`/`caption` when present, and an explicit open/download action. Private object refs must be resolved by the renderer with authenticated storage access.
+
+**map:** show a static preview or a clear map-opening affordance. Never autoplay navigation; use `lat,lng` exactly as provided.
+
+**contact-card:** show the phone number and offer copy/call actions when the platform supports them. Do not imply that name/email/address were captured unless separate data exists.
 
 **divider:** use to separate groups, not after every element.
 
@@ -1668,7 +1761,16 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.9 — June 2026 (this specification)
+PML v1.10 — June 2026 (this specification)
+  - Captured-value echo-back contract for passive display
+  - New passive components: attachment, map, contact-card
+  - Images still use image; audio/video still use media
+  - Private resources use stable object refs, never signed URLs
+  - Interaction output contract unchanged: same [[INTERACTION ...]]
+```
+
+```
+PML v1.9 — June 2026
   - New optional `source` attribute on input type="contact"
   - Describes where the phone number should come from
   - Values: self (own number), manual (typed number), contacts (address book)
@@ -1766,7 +1868,7 @@ PML v1.1 — April 2026
 
 ### 12.3 Candidates for future versions
 
-**v1.10 — form extensions** (compatible, additive):
+**v1.11 — form extensions** (compatible, additive):
 
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1774,7 +1876,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.11+ — new components:**
+**v1.12+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -1801,6 +1903,9 @@ PML v1.1 — April 2026
 │ dtcol          │ passive·child    │ Cell of a dtrow                          │
 │ image          │ passive          │ Static image                             │
 │ media          │ passive          │ Video or audio                           │
+│ attachment     │ passive          │ File open/download card                  │
+│ map            │ passive          │ Location preview                         │
+│ contact-card   │ passive          │ Phone-number card                        │
 │ divider        │ passive          │ Horizontal separator                     │
 │ raw            │ passive          │ Unparsed text block                      │
 ├────────────────┼──────────────────┼─────────────────────────────────────────┤
@@ -1850,6 +1955,7 @@ type             = std_component | aux_component ;
 
 std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "image"    | "media"    | "divider"| "raw"
+                 | "attachment" | "map"     | "contact-card"
                  | "input"    | "toggle"   | "choice" | "confirm"
                  | "form" ;
 
@@ -1885,7 +1991,8 @@ WS_eq            = "=" ;
 (*   dtable  → dtrow                                                     *)
 (*   dtrow   → dtcol                                                     *)
 (*   raw     → plain text (parser disabled)                              *)
-(*   form    → text | markdown | divider | image | media | raw           *)
+(*   form    → text | markdown | divider | image | media | attachment   *)
+(*             | map | contact-card | raw                                *)
 (*             | facts | input | toggle | choice | rule                  *)
 (*             (FORBIDDEN: dtable, confirm, nested form)                  *)
 (*             (REQUIRES at least one input, toggle, or choice)           *)
@@ -2003,7 +2110,7 @@ Field container with a single submit. Attributes:
 | `id`           | Yes      | —           |
 | `submit-label` | No       | `"Submit"`  |
 
-**Allowed children:** `text`, `markdown`, `divider`, `image`, `media`, `raw`, `facts`, `input`, `toggle`, `choice`.
+**Allowed children:** `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, `input`, `toggle`, `choice`.
 
 **Forbidden children:** `dtable` (depth), `confirm` (incompatible modal), nested `form`.
 
@@ -2363,4 +2470,53 @@ Whether the number came from the user's own profile, manual entry, or the addres
 
 ---
 
-_PML v1.9 — PEPPO Platform — June 2026_
+## Appendix J — Migration v1.9 → v1.10
+
+v1.10 is **additive**: it adds passive display components and an echo-back
+contract for captured values. There are no syntax changes and no changes to
+any `[[INTERACTION]]` payload.
+
+### J.1 New components
+
+| Component | Purpose |
+| --------- | ------- |
+| `attachment` | Open/download card for a captured document or generic file. |
+| `map` | Passive location preview from captured `lat,lng`. |
+| `contact-card` | Passive phone-number card from a captured contact value. |
+
+### J.2 Canonical echo-back
+
+Agents that recap values captured by interactive components should use:
+
+- `image` for captured image resources.
+- `media` for captured audio/video resources.
+- `attachment` for captured non-image/non-media files.
+- `map` for captured locations.
+- `contact-card` for captured phone numbers.
+- `facts` or `markdown` for scalar values, choices, toggles, and confirmations.
+
+### J.3 Private resources
+
+Private resources must be emitted as stable object refs (`images/...` or
+`files/...`). Agents must not emit signed URLs for echo-back because signed
+URLs expire and break immutable history.
+
+### J.4 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| v1.10 agent → v1.10 renderer | Expected case: rich passive previews render. |
+| v1.10 agent → v1.9 renderer | Unknown components degrade according to §12.2; scalar details remain visible through human-readable attributes. |
+| v1.9 agent → v1.10 renderer | Works normally. Renderer may keep local safety fallbacks for legacy textual file facts. |
+
+### J.5 What is NOT in v1.10
+
+- No changes to interaction serialization.
+- No signed URL policy.
+- No full contact object payload.
+- No multi-file upload contract.
+- No requirement that the runner fully parse or validate PML.
+
+---
+
+_PML v1.10 — PEPPO Platform — June 2026_
