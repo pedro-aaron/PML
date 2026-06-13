@@ -74,6 +74,8 @@ When adding examples or documenting new components, respect:
 
 ## Workspace context
 
-PML is one of several sub-projects under `/mnt/c/Users/pedro/Documents/atideas/`. The others (`Peppo/`, `abeone/`, `atideas.com/`, `_experimentos/`) have their own stacks and `AGENTS.md`. PML is the protocol that will eventually feed the PEPPO ChatApp; any real integration with that ChatApp happens in the `Peppo/` repo, not here.
+PML is one of several sub-projects under `/mnt/c/Users/pedro/Documents/atideas/`. The others (`Peppo/`, `abeone/`, `atideas.com/`, `_experimentos/`) have their own stacks and `CLAUDE.md`. PML is the protocol that feeds the PEPPO ChatApp (`Peppo/Peppo_android/`); integration and tenant/auth logic live in `Peppo/`, not here.
 
-For general workspace context see `/mnt/c/Users/pedro/Documents/atideas/AGENTS.md`.
+**Peppo multi-tenant (F1–F7):** PML wire format is unchanged by tenancy. The Android client sends `X-Peppo-Account-Id` on API calls; runner isolation is by `account_id` server-side. When reasoning about conversations or agent turns, read `../Peppo/CLAUDE.md` and `../abeone/tasks/runner/README.md` §15.0 — not this spec.
+
+For general workspace context see `/mnt/c/Users/pedro/Documents/atideas/CLAUDE.md`.

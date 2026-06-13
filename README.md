@@ -1,9 +1,11 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.10
+## Complete specification v1.11
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.11 (June 2026).** Adds catalog-backed data-source attributes on `input type="text"` and `choice`. The optional trio `source="catalog:{slug}"`, `key`, and `display` instruct the ChatApp to resolve options or typeahead suggestions against the account catalog `{slug}` via the paginated catalogs API — never via the LLM. The interaction always serializes the catalog **key** (business identifier), not the display label. When the catalog is unreachable or the slug is unknown, the renderer degrades to a plain input. `source` without both `key` and `display` is invalid. See §6.1.10, §6.3, and Appendix K.
+>
 > **v1.10 (June 2026).** Adds the captured-resource echo-back contract for passive display. New information components: `attachment`, `map`, and `contact-card`. Agents must re-display captured files, locations, and phone numbers with rich passive components instead of lossy text facts: images use `image`, audio/video use `media`, documents use `attachment`, locations use `map`, and phone numbers use `contact-card`. Private resources are referenced by stable object refs (`images/...`, `files/...`), never signed URLs. The interaction wire format is unchanged. See §5.7-§5.10 and Appendix J.
 >
 > **v1.9 (June 2026).** Adds the optional `source` attribute to `input type="contact"`. It describes where the phone number should come from: `self` (the user's own number), `manual` (typed number, default), or `contacts` (pick from the device address book). The output contract is unchanged — the ChatApp still emits a single phone value as `[[INTERACTION id="..." value="..."]]`. `source` is a non-binding hint: renderers without the requested capability fall back to manual entry. See §6.1.4 and Appendix I.
@@ -49,6 +51,7 @@
     - [5.12 raw](#512-raw)
 - [6. Interaction components](#6-interaction-components)
     - [6.1 input](#61-input)
+        - [6.1.10 Catalog data source](#6110-catalog-data-source-v111)
     - [6.2 toggle](#62-toggle)
     - [6.3 choice](#63-choice)
     - [6.4 confirm](#64-confirm)
@@ -75,6 +78,7 @@
 - [Appendix H — Migration v1.7 → v1.8](#appendix-h--migration-v17--v18)
 - [Appendix I — Migration v1.8 → v1.9](#appendix-i--migration-v18--v19)
 - [Appendix J — Migration v1.9 → v1.10](#appendix-j--migration-v19--v110)
+- [Appendix K — Migration v1.10 → v1.11](#appendix-k--migration-v110--v111)
 
 ---
 
@@ -552,6 +556,9 @@ Data entry field. The subtype is selected with the `type` attribute.
 | `max-length`    | No       | number  | Maximum characters.                           |
 | `min-length`    | No       | number  | Minimum characters.                           |
 | `password`      | No       | boolean | Hides text while typing. Default: `false`.    |
+| `source`        | No       | string  | **(v1.11)** Catalog data source. Valid only as `catalog:{slug}`. Requires `key` and `display`. See §6.1.10. |
+| `key`           | No       | string  | **(v1.11)** Catalog field used as the submitted business key. Required when `source` is present. |
+| `display`       | No       | string  | **(v1.11)** Catalog field shown as the UI label. Required when `source` is present. |
 
 ```
 [PML:input id="name" type="text" label="Full name"
@@ -576,6 +583,19 @@ With `multiline="true"`:
 ```
 
 > Line breaks are encoded as `%0A` (see §7.2).
+
+**Catalog-backed typeahead (v1.11).** When `source`, `key`, and `display` are present, the renderer queries the account catalog API (paginated search) as the user types and shows `display` values in the suggestion list. The interaction value is the selected item's **key** field, not the display label:
+
+```
+[PML:input id="cliente" type="text" source="catalog:clientes"
+  key="rfc" display="razon_social" label="Cliente" /]
+```
+
+```
+[[INTERACTION id="cliente" value="RFC-001"]]
+```
+
+See §6.1.10 for validity rules, supported types, and renderer fallback behavior.
 
 #### 6.1.2 input type="number"
 
@@ -767,6 +787,75 @@ Single file picker. The renderer uploads the file to an endpoint configured by t
 
 > `capture` is a **non-binding hint**. A renderer on a device without the requested hardware (e.g. a desktop without a camera) ignores `capture` and falls back to the standard file picker. The interaction output is identical in both cases: the ChatApp uploads the artifact and emits `[[INTERACTION id="..." value="<url>"]]`. The values `user`, `environment`, and `true` are reserved and are never translated.
 
+#### 6.1.10 Catalog data source (v1.11)
+
+Optional attributes that bind an interactive component to an account catalog. The ChatApp resolves catalog data through the **paginated catalogs API** scoped to the current account — never by asking the LLM to invent or recall catalog rows.
+
+| Attribute | Required | Type   | Description |
+| --------- | -------- | ------ | ----------- |
+| `source`  | No*      | string | Catalog reference. Must be exactly `catalog:{slug}` where `{slug}` is the catalog slug configured for the agent/account. |
+| `key`     | No*      | string | Name of the catalog field whose value is the **submitted business key** (stored value, foreign-key target). |
+| `display` | No*      | string | Name of the catalog field rendered as the human-visible label in the UI (typeahead suggestion, dropdown option, etc.). |
+
+\*When `source` is present, **both** `key` and `display` are **required**. A component with `source` but missing `key` or `display` is **invalid**; the renderer omits the broken control, logs a warning, and continues rendering the rest of the message.
+
+**`source` value namespace.** The attribute name `source` already exists on `input type="contact"` (v1.9) with reserved values `self`, `manual`, and `contacts`. Catalog binding uses a distinct value shape: `catalog:{slug}`. These namespaces do not overlap.
+
+**Which components and input types accept catalog `source`:**
+
+| Component / subtype | Catalog `source` | Behavior |
+| ------------------- | ---------------- | -------- |
+| `input type="text"` | **Yes**          | Typeahead / autocomplete: paginated search against the catalog as the user types; user picks a row or leaves free text if the renderer allows manual entry after fallback. |
+| `choice`            | **Yes**          | Options are loaded from the catalog (paginated). Static `[PML:opt /]` children are **ignored** when catalog `source` is present. |
+| `input type="contact"` | **No**        | `source` is reserved for contact acquisition (`self` / `manual` / `contacts`). Agents must not emit `catalog:` on `type="contact"`. |
+| All other `input` subtypes (`number`, `currency`, `date`, `time`, `datetime`, `location`, `file`) | **No** | Catalog attributes are invalid on these subtypes; renderers ignore them and show the plain subtype UI. |
+
+**Renderer resolution.** Given `source="catalog:{slug}"`, the ChatApp:
+
+1. Checks that `{slug}` is allowed for the current agent/account (sources contract / ACL).
+2. Queries the catalogs API with pagination and optional search (`q`) as the user interacts.
+3. Maps each row: shows `display` in the UI, submits `key` in the interaction.
+
+Resolution is **never** delegated to the LLM. The agent declares the binding; the ChatApp fetches rows.
+
+**Interaction serialization — always the key, never the display label:**
+
+| Context | Serialized form |
+| ------- | ---------------- |
+| Standalone `input` | `[[INTERACTION id="cliente" value="RFC-001"]]` |
+| Standalone `choice` (single) | `[[INTERACTION id="cliente" value="RFC-001"]]` — same as a static `opt` id: the **key** value. |
+| Standalone `choice` (`multi="true"`) | `[[INTERACTION id="tags" value="RFC-001,RFC-002"]]` — comma-separated **keys**. |
+| Child of `form` | `field-cliente="RFC-001"` — the `field-*` value is the **key**, URL-encoded per §7.2 when needed. |
+
+The display field (`razon_social`, product name, etc.) is for presentation only and must not appear in `[[INTERACTION]]`.
+
+**Graceful degradation.** When the catalog API is unreachable, `{slug}` is unknown, or the agent lacks read access, the renderer **must not block** the conversation. Fallback behavior:
+
+| Component | Fallback UI |
+| --------- | ------------- |
+| `input type="text"` with catalog attrs | Plain single-line text field (same as `type="text"` without catalog attrs). User may type freely; the interaction value is whatever they enter. |
+| `choice` with catalog attrs | Plain text input or empty choice shell with a warning in logs — renderers should prefer plain text entry so the user can still submit a value. |
+
+Degradation is silent to the user (no error modal); agents should treat free-text fallback values as untrusted relative to catalog keys.
+
+**Canonical example:**
+
+```
+[PML:input id="cliente" type="text" source="catalog:clientes"
+  key="rfc" display="razon_social" label="Cliente" /]
+```
+
+**Catalog-backed `choice` example:**
+
+```
+[PML:choice id="producto" style="dropdown" source="catalog:productos"
+  key="sku" display="nombre" placeholder="Selecciona un producto" /]
+```
+
+```
+[[INTERACTION id="producto" value="SKU-42"]]
+```
+
 ---
 
 ### 6.2 toggle
@@ -817,8 +906,11 @@ Selection between options (buttons, radio, or dropdown).
 | `multi`       | No       | `true` / `false`                 | Multiple selection. Default: `false`.  |
 | `placeholder` | No       | string                           | Initial text (`dropdown` only).        |
 | `required`    | No       | `true` / `false`                 | Required. Default: `false`.            |
+| `source`      | No       | string                           | **(v1.11)** Catalog data source. Valid only as `catalog:{slug}`. Requires `key` and `display`. See §6.1.10. |
+| `key`         | No       | string                           | **(v1.11)** Catalog field used as the submitted business key. Required when `source` is present. |
+| `display`     | No       | string                           | **(v1.11)** Catalog field shown as the UI label. Required when `source` is present. |
 
-**Content:** one or more `[PML:opt /]` as direct children.
+**Content:** one or more `[PML:opt /]` as direct children, **unless** catalog `source` is present (§6.1.10) — then options are loaded from the catalog API and static `opt` children are ignored.
 
 #### `opt` attributes
 
@@ -1116,6 +1208,7 @@ For a form with active interactive children `child-1`, `child-2`, ..., `child-n`
 - **Inactive interactive children are omitted**. A child is inactive when its effective visibility or effective enabled state is false.
 - **All active interactive children are always included**, even if they are `readonly` or the user did not touch them (in which case the value is the empty string `""` or the initial `value` declared by the agent).
 - For `choice multi="true"`, selected ids are serialized **comma-separated** inside the value (same as a standalone choice): `field-days="mon,tue,wed"`.
+- For catalog-backed `input` or `choice` children (§6.1.10), the serialized value is the catalog **key** field, not the display label: `field-cliente="RFC-001"`.
 - For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
 - The order of the attributes in the serialization should respect the order of the children in the form (legibility recommendation; not semantic).
 - **There are no forbidden IDs in form children.** Declarative IDs live in their own namespace: `id="id"`, `id="value"`, `id="error"` are valid because they serialize to `field-id`, `field-value`, `field-error`, without colliding with the reserved bracket names (`id`, `value`).
@@ -1761,7 +1854,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.10 — June 2026 (this specification)
+PML v1.11 — June 2026 (this specification)
+  - Catalog-backed data-source attributes on input type="text" and choice
+  - source="catalog:{slug}" + key + display bind UI to account catalogs
+  - ChatApp resolves via paginated catalogs API, never via the LLM
+  - Interaction serializes the catalog key (business identifier), not the display label
+  - source without key and display is invalid
+  - Graceful degradation to plain input when catalog unreachable or slug unknown
+```
+
+```
+PML v1.10 — June 2026
   - Captured-value echo-back contract for passive display
   - New passive components: attachment, map, contact-card
   - Images still use image; audio/video still use media
@@ -1868,7 +1971,7 @@ PML v1.1 — April 2026
 
 ### 12.3 Candidates for future versions
 
-**v1.11 — form extensions** (compatible, additive):
+**v1.12 — form extensions** (compatible, additive):
 
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1876,7 +1979,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.12+ — new components:**
+**v1.13+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -2519,4 +2622,59 @@ URLs expire and break immutable history.
 
 ---
 
-_PML v1.10 — PEPPO Platform — June 2026_
+## Appendix K — Migration v1.10 → v1.11
+
+v1.11 is **additive**: it introduces three optional attributes (`source`, `key`, `display`) for catalog-backed resolution on `input type="text"` and `choice`. There are no syntax changes to the `[[INTERACTION]]` wire format itself — only the **semantic contract** for what value is serialized when a catalog row is selected.
+
+### K.1 New attributes
+
+| Attribute | Valid on | Value shape |
+| --------- | -------- | ----------- |
+| `source`  | `input type="text"`, `choice` | `catalog:{slug}` |
+| `key`     | Same (required with `source`) | Catalog field name (business key) |
+| `display` | Same (required with `source`) | Catalog field name (UI label) |
+
+```pml
+[PML:input id="cliente" type="text" source="catalog:clientes"
+  key="rfc" display="razon_social" label="Cliente" /]
+```
+
+### K.2 Coexistence with v1.9 `source` on contact
+
+v1.9 uses `source` on `input type="contact"` with values `self`, `manual`, and `contacts`. v1.11 reuses the attribute name on other subtypes with values prefixed `catalog:`. These namespaces are disjoint; agents must not emit `catalog:` on `type="contact"`.
+
+### K.3 Interaction contract
+
+When the user selects a catalog row, the ChatApp emits the **`key`** field value:
+
+```
+[[INTERACTION id="cliente" value="RFC-001"]]
+```
+
+Inside a form:
+
+```
+[[INTERACTION id="pedido" field-cliente="RFC-001" field-producto="SKU-42"]]
+```
+
+Display labels never appear in interactions.
+
+### K.4 Validity and degradation
+
+| Condition | Renderer behavior |
+| --------- | ----------------- |
+| `source` without `key` or without `display` | Invalid component — omit control, log warning. |
+| Catalog API unreachable or slug unknown | Degrade to plain `input type="text"` (or plain text entry for `choice`). |
+| v1.11 agent → v1.10 renderer | Unknown attributes dropped; plain text/choice UI without catalog lookup. |
+
+### K.5 What is NOT in v1.11
+
+- Catalog write/create from PML (read-only resolution for UI).
+- Inline catalog schema declaration in PML (schema lives in the catalogs API).
+- Catalog-backed `input` subtypes other than `text`.
+- LLM-side catalog row injection or memorization.
+- Changes to `sources_contract` or tenant headers (handled outside this spec).
+
+---
+
+_PML v1.11 — PEPPO Platform — June 2026_
