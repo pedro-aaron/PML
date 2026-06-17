@@ -1,9 +1,15 @@
 # PML — PEPPO Markup Language
 
-## Especificación completa v1.9
+## Especificación completa v1.12
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.12 (Junio 2026).** Agrega el atributo opcional `display-columns` a `dtable`. Permite al agente elegir hasta cuatro columnas que deben permanecer visibles en renderers responsivos compactos; las demás columnas siguen siendo parte de cada fila y pueden mostrarse mediante detalles por fila. El formato de interacción no cambia porque `dtable` es pasivo. Ver §5.4 y Apéndice L.
+>
+> **v1.11 (Junio 2026).** Agrega atributos de fuente de datos respaldada por catálogos en `input type="text"` y `choice`. El trío opcional `source="catalog:{slug}"`, `key` y `display` indica a la ChatApp resolver opciones o sugerencias typeahead contra el catálogo de la cuenta `{slug}` mediante la API paginada de catálogos, nunca mediante el LLM. La interacción siempre serializa el **key** del catálogo (identificador de negocio), no la etiqueta visible. Si el catálogo no está disponible o el slug es desconocido, el renderer degrada a input plano. `source` sin `key` y `display` es inválido. Ver §6.1.10, §6.3 y Apéndice K.
+>
+> **v1.10 (Junio 2026).** Agrega el contrato de echo-back de recursos capturados para display pasivo. Nuevos componentes de información: `attachment`, `map` y `contact-card`. Los agentes deben volver a mostrar archivos, ubicaciones y teléfonos capturados con componentes pasivos ricos en lugar de facts textuales con pérdida: imágenes usan `image`, audio/video usan `media`, documentos usan `attachment`, ubicaciones usan `map` y teléfonos usan `contact-card`. Los recursos privados se referencian con object refs estables (`images/...`, `files/...`), nunca URLs firmadas. El formato de interacción no cambia. Ver §5.7-§5.10 y Apéndice J.
+>
 > **v1.9 (Junio 2026).** Agrega el atributo opcional `source` a `input type="contact"`. Describe de dónde debe venir el número telefónico: `self` (número propio del usuario), `manual` (número tecleado, default) o `contacts` (elegir desde la agenda del dispositivo). El contrato de salida no cambia: la ChatApp sigue emitiendo un único valor telefónico como `[[INTERACTION id="..." value="..."]]`. `source` es una pista no vinculante: los renderers sin la capacidad solicitada caen a captura manual. Ver §6.1.4 y Apéndice I.
 >
 > **v1.8 (Mayo 2026).** Agrega el atributo opcional `capture` a `input type="file"`. Es una pista que indica a la ChatApp que abra directamente la cámara, la grabadora de audio o la de video del dispositivo en lugar del explorador de archivos. El medio capturado sigue determinándose con `accept` (`image/*`, `audio/*`, `video/*`); `capture` solo elige la UI de captura. Valores aceptados: `user` (cámara frontal), `environment` (cámara trasera), `true` (captura directa, sin preferencia de cámara). El contrato de salida no cambia: la ChatApp sube el artefacto y emite el mismo `[[INTERACTION id="..." value="<url>"]]`. `capture` es una pista no vinculante: los renderers sin el hardware solicitado caen al selector de archivos estándar. Ver §6.1.9 y Apéndice H.
@@ -68,6 +74,9 @@
 - [Apéndice G — Migración v1.6.1 → v1.7](#apéndice-g--migración-v161--v17)
 - [Apéndice H — Migración v1.7 → v1.8](#apéndice-h--migración-v17--v18)
 - [Apéndice I — Migración v1.8 → v1.9](#apéndice-i--migración-v18--v19)
+- [Apéndice J — Migración v1.9 → v1.10](#apéndice-j--migración-v19--v110)
+- [Apéndice K — Migración v1.10 → v1.11](#apéndice-k--migración-v110--v111)
+- [Apéndice L — Migración v1.11 → v1.12](#apéndice-l--migración-v111--v112)
 
 ---
 
@@ -346,14 +355,15 @@ Tabla de pares clave-valor.
 
 Tabla de datos genérica.
 
-| Atributo  | Requerido | Tipo   | Descripción                              |
-| --------- | --------- | ------ | ---------------------------------------- |
-| `columns` | Sí        | string | Nombres de columnas separados por comas. |
+| Atributo         | Requerido | Tipo   | Descripción                                                                                                              |
+| ---------------- | --------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `columns`        | Sí        | string | Nombres de columnas separados por comas.                                                                                 |
+| `display-columns` | No      | string | **(v1.12)** Subconjunto de `columns` separado por comas, hasta cuatro nombres, que debe mantenerse visible en renderers responsivos compactos. |
 
 **Contenido:** filas envueltas en `[PML:dtrow] ... [/PML:dtrow]`. Cada celda es un `[PML:dtcol value="..." /]` autofinalizado. El número de celdas por fila debe coincidir con el número de columnas declaradas.
 
 ```
-[PML:dtable columns="Plan,Precio,Agentes,Mensajes"]
+[PML:dtable columns="Plan,Precio,Agentes,Mensajes" display-columns="Plan,Precio"]
   [PML:dtrow]
     [PML:dtcol value="Básico" /][PML:dtcol value="$9/mes"  /][PML:dtcol value="1"  /][PML:dtcol value="100/día"   /]
   [/PML:dtrow]
@@ -362,6 +372,12 @@ Tabla de datos genérica.
   [/PML:dtrow]
 [/PML:dtable]
 ```
+
+`display-columns` es una pista de presentación para tablas anchas. No elimina
+datos: las celdas de columnas no visibles siguen siendo parte de cada fila y
+pueden revelarse mediante detalles de fila, controles de expansión u otra
+adaptación responsiva. Los nombres desconocidos se ignoran. Si el atributo se
+omite, el renderer elige un default compacto.
 
 ### 5.5 image
 
@@ -1601,7 +1617,7 @@ Resumen práctico; los diagramas extensos por fase quedan fuera del cuerpo princ
 
 **facts:** preferir `columns="1"` en móvil salvo que claves y valores sean muy cortos; no usar para datos editables.
 
-**dtable:** permitir scroll horizontal o transformar a filas-lista si la tabla es ancha; evitar celdas largas (usar `facts` o `markdown` en su lugar).
+**dtable:** para tablas anchas, preferir un resumen compacto de fila con expansión de detalles; honrar `display-columns` cuando esté presente. El scroll horizontal es aceptable solo cuando la expansión ocultaría comparación esencial. Evitar celdas largas (usar `facts` o `markdown` en su lugar).
 
 **image:** siempre respetar `alt`; reservar espacio antes de cargar para evitar saltos.
 
@@ -1670,7 +1686,34 @@ Resumen práctico; los diagramas extensos por fase quedan fuera del cuerpo princ
 ### 12.1 Versionado
 
 ```
-PML v1.9 — Junio 2026 (esta especificación)
+PML v1.12 — Junio 2026 (esta especificación)
+  - dtable agrega el atributo opcional display-columns
+  - display-columns selecciona hasta cuatro columnas visibles para tablas responsivas compactas
+  - Las columnas no visibles siguen siendo parte de cada fila y pueden exponerse como detalles
+  - El formato de interacción no cambia
+```
+
+```
+PML v1.11 — Junio 2026
+  - Atributos de fuente de datos respaldada por catálogos en input type="text" y choice
+  - source="catalog:{slug}" + key + display enlazan la UI a catálogos de cuenta
+  - La ChatApp resuelve mediante la API paginada de catálogos, nunca mediante el LLM
+  - La interacción serializa el key del catálogo (identificador de negocio), no la etiqueta visible
+  - source sin key y display es inválido
+  - Degradación elegante a input plano cuando el catálogo no existe o no está disponible
+```
+
+```
+PML v1.10 — Junio 2026
+  - Contrato de echo-back de recursos capturados para display pasivo
+  - Nuevos componentes pasivos: attachment, map, contact-card
+  - image sigue para imágenes; media sigue para audio/video
+  - Los recursos privados usan object refs estables, nunca URLs firmadas
+  - El contrato de salida no cambia: mismo [[INTERACTION ...]]
+```
+
+```
+PML v1.9 — Junio 2026
   - Nuevo atributo opcional `source` en input type="contact"
   - Describe de dónde debe venir el número telefónico
   - Valores: self (número propio), manual (número tecleado), contacts (agenda)
@@ -1768,7 +1811,7 @@ PML v1.1 — Abril 2026
 
 ### 12.3 Candidatos para versiones futuras
 
-**v1.10 — extensiones del form** (compatibles, aditivas):
+**Future — extensiones del form** (compatibles, aditivas):
 
 | Extensión                 | Descripción                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -1776,7 +1819,7 @@ PML v1.1 — Abril 2026
 | `form` con `disabled`     | Permite deshabilitar el form entero durante envío al backend.                                                    |
 | Validación cruzada        | Atributo `validate-with="other-field-id"` para reglas entre campos (ej. confirmación de contraseña).             |
 
-**v1.11+ — nuevos componentes:**
+**Future — nuevos componentes:**
 
 | Componente  | Descripción                                                              | Prioridad |
 | ----------- | ------------------------------------------------------------------------ | --------- |
@@ -2367,4 +2410,148 @@ Ya sea que el número venga del perfil del usuario, captura manual o la agenda, 
 
 ---
 
-_PML v1.9 — PEPPO Platform — Junio 2026_
+## Apéndice J — Migración v1.9 → v1.10
+
+v1.10 es **aditivo**: introduce componentes pasivos para echo-back de recursos
+capturados (`attachment`, `map`, `contact-card`) y clarifica que los recursos
+privados deben viajar como object refs estables, no como URLs firmadas. No hay
+cambios al formato `[[INTERACTION]]`.
+
+### J.1 Nuevos componentes pasivos
+
+| Componente     | Uso |
+| -------------- | --- |
+| `attachment`   | Archivo o documento capturado. |
+| `map`          | Ubicación capturada. |
+| `contact-card` | Teléfono capturado. |
+
+### J.2 Contrato de echo-back
+
+Cuando un agente confirma datos capturados, debe volver a mostrar los recursos
+con componentes pasivos ricos:
+
+- Imágenes: `image`.
+- Audio/video: `media`.
+- Documentos/archivos: `attachment`.
+- Ubicaciones: `map`.
+- Teléfonos: `contact-card`.
+
+### J.3 Compatibilidad
+
+Renderers anteriores que no conozcan estos componentes deben degradar con gracia
+según la regla de componentes/atributos desconocidos. El formato de interacción
+permanece igual.
+
+---
+
+## Apéndice K — Migración v1.10 → v1.11
+
+v1.11 es **aditivo**: introduce tres atributos opcionales (`source`, `key`,
+`display`) para resolución respaldada por catálogos en `input type="text"` y
+`choice`. No hay cambios de sintaxis en `[[INTERACTION]]`; cambia solamente el
+contrato semántico del valor serializado cuando se selecciona una fila de
+catálogo.
+
+### K.1 Nuevos atributos
+
+| Atributo  | Válido en | Forma del valor |
+| --------- | --------- | --------------- |
+| `source`  | `input type="text"`, `choice` | `catalog:{slug}` |
+| `key`     | Igual (requerido con `source`) | Nombre de campo del catálogo usado como business key |
+| `display` | Igual (requerido con `source`) | Nombre de campo mostrado como etiqueta UI |
+
+```pml
+[PML:input id="cliente" type="text" source="catalog:clientes"
+  key="rfc" display="razon-social" label="Cliente" /]
+```
+
+### K.2 Coexistencia con `source` de v1.9 en contact
+
+v1.9 usa `source` en `input type="contact"` con valores `self`, `manual` y
+`contacts`. v1.11 reutiliza el nombre del atributo en otros subtipos con valores
+prefijados por `catalog:`. Los namespaces son disjuntos; los agentes no deben
+emitir `catalog:` en `type="contact"`.
+
+### K.3 Contrato de interacción
+
+Cuando el usuario selecciona una fila de catálogo, la ChatApp emite el valor del
+campo **`key`**:
+
+```
+[[INTERACTION id="cliente" value="RFC-001"]]
+```
+
+Dentro de un form:
+
+```
+[[INTERACTION id="pedido" field-cliente="RFC-001" field-producto="SKU-42"]]
+```
+
+Las etiquetas visibles nunca aparecen en las interacciones.
+
+### K.4 Validez y degradación
+
+| Condición | Comportamiento del renderer |
+| --------- | --------------------------- |
+| `source` sin `key` o sin `display` | Componente inválido: omitir control y loggear warning. |
+| API de catálogo no disponible o slug desconocido | Degradar a `input type="text"` plano (o entrada textual plana para `choice`). |
+| Agente v1.11 → renderer v1.10 | Atributos desconocidos descartados; UI de texto/choice sin lookup de catálogo. |
+
+### K.5 Lo que NO está en v1.11
+
+- Escritura/creación de catálogos desde PML.
+- Declaración inline de schema de catálogo en PML.
+- Subtipos de `input` respaldados por catálogo que no sean `text`.
+- Inyección o memorización de filas de catálogo por el LLM.
+- Cambios a `sources_contract` o headers de tenant.
+
+---
+
+## Apéndice L — Migración v1.11 → v1.12
+
+v1.12 es **aditivo**: agrega una pista opcional de presentación,
+`display-columns`, al componente pasivo `dtable`. No hay cambios en
+`[[INTERACTION]]` porque las tablas no emiten interacciones.
+
+### L.1 Nuevo atributo
+
+| Atributo          | Válido en | Forma del valor |
+| ----------------- | --------- | --------------- |
+| `display-columns` | `dtable`  | Subconjunto de `columns` separado por comas, máximo cuatro nombres |
+
+```pml
+[PML:dtable columns="ID,Nombre,Email,Plan,Estatus" display-columns="ID,Nombre,Plan"]
+  [PML:dtrow]
+    [PML:dtcol value="C-001" /][PML:dtcol value="Acme" /][PML:dtcol value="ops@example.com" /][PML:dtcol value="Pro" /][PML:dtcol value="Activo" /]
+  [/PML:dtrow]
+[/PML:dtable]
+```
+
+### L.2 Comportamiento del renderer
+
+Los renderers deben mantener visibles las columnas listadas en layouts
+responsivos compactos. Las columnas no listadas siguen siendo parte de cada
+fila y pueden exponerse mediante expansión de fila, paneles de detalle u otra
+adaptación nativa del renderer.
+
+Si `display-columns` se omite, el renderer elige un default compacto. Si contiene
+nombres desconocidos o más de cuatro nombres, los desconocidos se ignoran y solo
+se usan los primeros cuatro nombres válidos.
+
+### L.3 Compatibilidad
+
+| Escenario | Comportamiento |
+| --------- | -------------- |
+| Agente v1.12 → renderer v1.12 | Caso esperado: las columnas visibles siguen `display-columns`. |
+| Agente v1.12 → renderer v1.11 | Atributo desconocido descartado; la tabla aún se renderiza con el fallback existente para tablas anchas. |
+| Agente v1.11 → renderer v1.12 | Funciona normalmente; sin `display-columns`, el renderer elige defaults. |
+
+### L.4 Lo que NO está en v1.12
+
+- Sintaxis para ancho, alineación, ordenamiento, filtros o paginación por columna.
+- Eliminación de columnas ocultas: `display-columns` es una pista de presentación, no un filtro de datos.
+- Cambios a forms o serialización de interacciones.
+
+---
+
+_PML v1.12 — PEPPO Platform — Junio 2026_

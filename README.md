@@ -1,9 +1,11 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.11
+## Complete specification v1.12
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.12 (June 2026).** Adds the optional `display-columns` attribute to `dtable`. It lets the agent choose up to four columns that should remain visible in compact responsive renderers; all other columns remain part of the row and may be shown through per-row details. The interaction wire format is unchanged because `dtable` is passive. See §5.4 and Appendix L.
+>
 > **v1.11 (June 2026).** Adds catalog-backed data-source attributes on `input type="text"` and `choice`. The optional trio `source="catalog:{slug}"`, `key`, and `display` instruct the ChatApp to resolve options or typeahead suggestions against the account catalog `{slug}` via the paginated catalogs API — never via the LLM. The interaction always serializes the catalog **key** (business identifier), not the display label. When the catalog is unreachable or the slug is unknown, the renderer degrades to a plain input. `source` without both `key` and `display` is invalid. See §6.1.10, §6.3, and Appendix K.
 >
 > **v1.10 (June 2026).** Adds the captured-resource echo-back contract for passive display. New information components: `attachment`, `map`, and `contact-card`. Agents must re-display captured files, locations, and phone numbers with rich passive components instead of lossy text facts: images use `image`, audio/video use `media`, documents use `attachment`, locations use `map`, and phone numbers use `contact-card`. Private resources are referenced by stable object refs (`images/...`, `files/...`), never signed URLs. The interaction wire format is unchanged. See §5.7-§5.10 and Appendix J.
@@ -79,6 +81,7 @@
 - [Appendix I — Migration v1.8 → v1.9](#appendix-i--migration-v18--v19)
 - [Appendix J — Migration v1.9 → v1.10](#appendix-j--migration-v19--v110)
 - [Appendix K — Migration v1.10 → v1.11](#appendix-k--migration-v110--v111)
+- [Appendix L — Migration v1.11 → v1.12](#appendix-l--migration-v111--v112)
 
 ---
 
@@ -360,14 +363,15 @@ Key-value pair table.
 
 Generic data table.
 
-| Attribute | Required | Type   | Description                              |
-| --------- | -------- | ------ | ---------------------------------------- |
-| `columns` | Yes      | string | Comma-separated column names.            |
+| Attribute         | Required | Type   | Description                                                                                                                   |
+| ----------------- | -------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `columns`         | Yes      | string | Comma-separated column names.                                                                                                 |
+| `display-columns` | No       | string | **(v1.12)** Comma-separated subset of `columns`, up to four names, that should stay visible in compact responsive renderers. |
 
 **Content:** rows wrapped in `[PML:dtrow] ... [/PML:dtrow]`. Each cell is a self-closing `[PML:dtcol value="..." /]`. The number of cells per row must match the declared column count.
 
 ```
-[PML:dtable columns="Plan,Price,Agents,Messages"]
+[PML:dtable columns="Plan,Price,Agents,Messages" display-columns="Plan,Price"]
   [PML:dtrow]
     [PML:dtcol value="Basic" /][PML:dtcol value="$9/mo"  /][PML:dtcol value="1"  /][PML:dtcol value="100/day"  /]
   [/PML:dtrow]
@@ -376,6 +380,12 @@ Generic data table.
   [/PML:dtrow]
 [/PML:dtable]
 ```
+
+`display-columns` is a presentation hint for wide tables. It does not remove
+data: cells for non-displayed columns remain part of each row and can be
+revealed by the renderer through row details, expansion controls, or another
+responsive affordance. Unknown names are ignored. If the attribute is omitted,
+the renderer chooses a compact default.
 
 ### 5.5 image
 
@@ -1779,7 +1789,7 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 
 **facts:** prefer `columns="1"` on mobile unless keys and values are very short; do not use for editable data.
 
-**dtable:** allow horizontal scroll or transform into list rows if the table is wide; avoid long cells (use `facts` or `markdown` instead).
+**dtable:** for wide tables, prefer a compact row summary with details expansion; honor `display-columns` when present. Horizontal scroll is acceptable only when expansion would hide essential comparison. Avoid long cells (use `facts` or `markdown` instead).
 
 **image:** always respect `alt`; reserve space before loading to prevent layout shifts.
 
@@ -1854,7 +1864,15 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.11 — June 2026 (this specification)
+PML v1.12 — June 2026 (this specification)
+  - dtable adds optional display-columns
+  - display-columns selects up to four visible columns for compact responsive tables
+  - Non-displayed columns remain part of each row and may be exposed as row details
+  - Interaction wire format unchanged
+```
+
+```
+PML v1.11 — June 2026
   - Catalog-backed data-source attributes on input type="text" and choice
   - source="catalog:{slug}" + key + display bind UI to account catalogs
   - ChatApp resolves via paginated catalogs API, never via the LLM
@@ -1971,7 +1989,7 @@ PML v1.1 — April 2026
 
 ### 12.3 Candidates for future versions
 
-**v1.12 — form extensions** (compatible, additive):
+**Future — form extensions** (compatible, additive):
 
 | Extension                 | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -2677,4 +2695,50 @@ Display labels never appear in interactions.
 
 ---
 
-_PML v1.11 — PEPPO Platform — June 2026_
+## Appendix L — Migration v1.11 → v1.12
+
+v1.12 is **additive**: it adds one optional presentation hint,
+`display-columns`, to the passive `dtable` component. There are no changes to
+`[[INTERACTION]]` because tables do not emit interactions.
+
+### L.1 New attribute
+
+| Attribute         | Valid on | Value shape |
+| ----------------- | -------- | ----------- |
+| `display-columns` | `dtable` | Comma-separated subset of `columns`, maximum four names |
+
+```pml
+[PML:dtable columns="ID,Name,Email,Plan,Status" display-columns="ID,Name,Plan"]
+  [PML:dtrow]
+    [PML:dtcol value="C-001" /][PML:dtcol value="Acme" /][PML:dtcol value="ops@example.com" /][PML:dtcol value="Pro" /][PML:dtcol value="Active" /]
+  [/PML:dtrow]
+[/PML:dtable]
+```
+
+### L.2 Renderer behavior
+
+Renderers should keep the listed columns visible in compact responsive layouts.
+Columns not listed remain part of each row and may be exposed through row
+expansion, details panes, or another renderer-native affordance.
+
+If `display-columns` is omitted, the renderer chooses a compact default. If it
+contains unknown names or more than four names, unknown names are ignored and
+only the first four valid names are used.
+
+### L.3 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| v1.12 agent → v1.12 renderer | Expected case: visible columns follow `display-columns`. |
+| v1.12 agent → v1.11 renderer | Unknown attribute dropped; table still renders with the renderer's existing wide-table fallback. |
+| v1.11 agent → v1.12 renderer | Works normally; without `display-columns`, the renderer chooses defaults. |
+
+### L.4 What is NOT in v1.12
+
+- No per-column width, alignment, sorting, filtering, or pagination syntax.
+- No hidden-column removal: `display-columns` is a presentation hint, not a data filter.
+- No changes to forms or interaction serialization.
+
+---
+
+_PML v1.12 — PEPPO Platform — June 2026_
