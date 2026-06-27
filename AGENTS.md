@@ -1,5 +1,11 @@
 # AGENTS.md — PML
 
+<!-- agentic-routes:begin — managed by agentic-planning-kit. Edit WORKSPACE_MAP.md, not this block. -->
+## Workspace map
+
+This workspace has a generated route map at [`WORKSPACE_MAP.md`](../WORKSPACE_MAP.md): stack and blessed libraries, modules/subprojects, build/test commands (and where they run), hard rules, canonical contracts, the `file:symbol` seams where new work attaches, the code conventions and engineering principles (contract/interface-first, DI, SOLID — at this workspace's real bar), and the recipes for adding a new endpoint/screen/model/job. **Read it before planning or implementing changes** so new code matches how this workspace already does things. Plan features with `agentic-planning-kit/` (see its `TRIGGERS.md`). Regenerate this map and this block by re-running `agentic-planning-kit/PROMPT_INIT.md`.
+<!-- agentic-routes:end -->
+
 This file orients Codex when working on this sub-project. It is complementary to the workspace `AGENTS.md` at `/mnt/c/Users/pedro/Documents/atideas/`.
 
 ## What this project is
