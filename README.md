@@ -1,11 +1,15 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.13
+## Complete specification v1.14
 
-> **v1.13 (October 2026).** Adds the structural `group` container with an implicit single-column layout and an optional `id`. Inside a `form`, rules can target a group to control its descendants' effective visibility or enabled state. Grouped fields retain their own IDs and the existing `field-*` serialization. Existing components and messages without groups keep their syntax, defaults, and behavior. See §4.8, §6.5, and Appendix M.
+> **v1.14 (October 2026).** Corrects the contracts for value encoding, validation, selection restoration, catalog resolution, resource references, rules, and task finalization. Defines context-based narrative placement and redacted terminal snapshots. Bracket syntax is unchanged; the v1.14 value-encoding profile and corrected behavior require explicit renderer/consumer version agreement. This is not a claim of unchanged legacy behavior. See §6, §7, §10, and Appendix N.
+
+Earlier version notices and Appendices C-M describe their historical releases. Current component sections, the current interaction/lifecycle contracts, and Appendix N govern v1.14; older examples retain their stated release profiles.
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
+> **v1.13 (October 2026).** Adds the structural `group` container with an implicit single-column layout and an optional `id`. Inside a `form`, rules can target a group to control its descendants' effective visibility or enabled state. Grouped fields retain their own IDs and the existing `field-*` serialization. Existing components and messages without groups keep their syntax, defaults, and behavior. See §4.8, §6.5, and Appendix M.
+>
 > **v1.12 (June 2026).** Adds the optional `display-columns` attribute to `dtable`. It lets the agent choose up to four columns that should remain visible in compact responsive renderers; all other columns remain part of the row and may be shown through per-row details. The interaction wire format is unchanged because `dtable` is passive. See §5.4 and Appendix L.
 >
 > **v1.11 (June 2026).** Adds catalog-backed data-source attributes on `input type="text"` and `choice`. The optional trio `source="catalog:{slug}"`, `key`, and `display` instruct the ChatApp to resolve options or typeahead suggestions against the account catalog `{slug}` via the paginated catalogs API — never via the LLM. The interaction always serializes the catalog **key** (business identifier), not the display label. When the catalog is unreachable or the slug is unknown, the renderer degrades to a plain input. `source` without both `key` and `display` is invalid. See §6.1.10, §6.3, and Appendix K.
@@ -20,7 +24,7 @@
 >
 > **v1.6.1 (May 2026).** Adds native cancel action to `form`: `cancel-label` attribute + empty-bracket cancel interaction `[[INTERACTION id="form-id"]]`. When present, the ChatApp renders a secondary cancel button alongside the submit button. Cancelling emits an interaction with only the `id` attribute (no `value`, no `field-*`), allowing the agent to distinguish cancel from submit. See §6.5.
 >
-> **v1.6 (May 2026).** Cleans up the serialization of the multi-field bracket introduced in v1.5: a `form`'s fields are now serialized with the `field-*` prefix (`field-name="..."`, `field-email="..."`). This eliminates the artificial rule "do not use `id="id"` or `id="value"` in form children" and makes the boundary between bracket metadata and form fields explicit. The declarative IDs of children remain unrestricted (any valid kebab-case). v1.6 is **additive**: v1.6 renderers accept v1.5 brackets without the prefix during the transition; v1.5 renderers that receive a v1.6 bracket ignore the unknown `field-*` attributes and process only `id`. See Appendix E.
+> **v1.6 (May 2026).** Cleans up the serialization of the multi-field bracket introduced in v1.5: a `form`'s fields are serialized with the `field-*` prefix (`field-name="..."`, `field-email="..."`). This isolates field names from bracket metadata. The ChatApp produces these brackets; agent/backend consumers interpret them. Consumers may support the older bare-field format under negotiated legacy behavior; losing fields is not a safe compatibility strategy. See Appendix E and §12.2.
 
 ---
 
@@ -61,10 +65,11 @@
     - [6.3 choice](#63-choice)
     - [6.4 confirm](#64-confirm)
     - [6.5 form](#65-form)
+    - [6.6 Common validation contract](#66-common-validation-contract)
 - [7. Interaction model](#7-interaction-model)
     - [7.1 Interaction format](#71-interaction-format)
     - [7.2 URL encoding of values](#72-url-encoding-of-values)
-    - [7.3 Scalability: multi-field interactions](#73-scalability-multi-field-interactions)
+    - [7.3 Multi-field interactions](#73-multi-field-interactions)
     - [7.4 Conversation flow](#74-conversation-flow)
     - [7.5 Full conversation example](#75-full-conversation-example)
     - [7.6 State update](#76-state-update)
@@ -86,6 +91,7 @@
 - [Appendix K — Migration v1.10 → v1.11](#appendix-k--migration-v110--v111)
 - [Appendix L — Migration v1.11 → v1.12](#appendix-l--migration-v111--v112)
 - [Appendix M — Migration v1.12 → v1.13](#appendix-m--migration-v112--v113)
+- [Appendix N — Migration v1.13 → v1.14](#appendix-n--migration-v113--v114)
 
 ---
 
@@ -131,9 +137,9 @@ sequenceDiagram
     ChatApp->>ChatApp: Renders initial message<br />from the Agent spec
     note over ChatApp: "Welcome, how can I help you?"
     User->>ChatApp: Sends: "Hi!"
-    ChatApp->>Agent: [[INTERACTION id="user-init" value="Hi!"]]
+    ChatApp->>Agent: Hi!
     Agent->>Agent: Processes and generates PML
-    note over Agent: "Hi, how can I help you?<br />[PML:choice id=actions]...[/PML:choice]"
+    note over Agent: Hi, how can I help you?<br />[PML:choice id="actions"]...[/PML:choice]
     Agent->>ChatApp: PML response
     ChatApp->>User: Renders text + buttons
     User->>ChatApp: Taps "Weather"
@@ -146,7 +152,7 @@ sequenceDiagram
 
 ```
 - Interaction-first   →  The agent generates UI interactions, not only text
-- Token-efficient     →  More compact than JSON, XML, or any alternative
+- Token-efficient     →  Minimize measured tokens and generation errors for representative tasks
 - LLM-friendly        →  Regular, predictable syntax, easy to emit without errors
 - Mobile-native       →  Designed for mobile conversational flows
 - UILogic-first       →  UI logic lives in the frontend, not in the agent
@@ -182,7 +188,7 @@ A **PML Agent** is an LLM (Large Language Model) configured to:
 **Base prompt.** The agent's prompt must include, at minimum:
 
 - An explanation of PML syntax (the subsection of the spec applicable to its domain).
-- Explicit instructions on how to **decode** URL-encoded values arriving in user interactions.
+- Explicit instructions on the negotiated interaction profile and whether the application boundary has already decoded values; decode at most once (§7.2).
 - Representative examples of the agent's domain.
 
 > It is not recommended to include the full PML specification in the base prompt; the subset needed for the agent's domain is enough. Including everything can degrade generation quality.
@@ -226,15 +232,21 @@ Components with child content (other components or text, as allowed by the compo
 | **Case**            | Component and attribute names are in `lowercase` or `kebab-case`. Never `camelCase`, never `snake_case`, never uppercase.               |
 | **Attributes**      | Syntax: `name="value"`. Names follow `[a-z][a-z0-9-]*`.                                                                                 |
 | **Quotes**          | Values are delimited by `"` (preferred) or `'`. Never mix within the same attribute.                                                    |
-| **Nested quotes**   | If a value contains the same quote that delimits it, use HTML entities (`&quot;`, `&#39;`).                                             |
-| **Forbidden**       | No JSON, no `< >`, no literal `[` `]` characters outside components or inside attribute values.                                         |
-| **IDs**             | Every interactive component **must** declare `id="..."`. Format: `kebab-case`, no spaces or special characters, must not start with a digit. |
-| **Uniqueness**      | `id`s are unique within a message.                                                                                                      |
-| **Self-closing**    | Must end with a space before the slash: ` /]`.                                                                                          |
+| **Nested quotes**   | A matching quote ends the attribute value. Represent a matching quote with `&quot;` or `&#39;`; backslash does not escape PML quotes. |
+| **Structure**       | PML components use bracket tags, not JSON or HTML. Ordinary text and quoted values may contain brackets, angle brackets, and backslashes. |
+| **IDs**             | Every interactive component **must** declare `id="..."`. Component IDs match `[a-z][a-z0-9-]*`; `opt` uses the separate option-token rules in §6.3. |
+| **Uniqueness**      | Component IDs are unique within a message. Option tokens are unique within their owning `choice`.                                     |
+| **Self-closing**    | Canonical emission ends with ` /]`; parsers accept one or more ASCII whitespace characters before `/]`. |
 | **Closing**         | Containers are closed with `[/PML:type]`. The type name must exactly match the opening tag.                                             |
-| **Escaping**        | There are no `\` escape sequences. Use HTML entities or `[PML:raw]` when literals are needed.                                            |
+| **Escaping**        | PML has no backslash string escapes. Attribute character references are decoded once after structural parsing; regex backslashes remain regex data. |
 
-> URL encoding applies to **interaction values**, not to attributes of PML components emitted by the agent. See §7.2.
+**Structural recognition and character references (v1.14).** Scan the original text before decoding character references. Only exact `[PML:`, `[/PML:`, and `[[INTERACTION` delimiters are structural in their applicable contexts; other brackets are ordinary text, including Markdown links. Attribute scanning is quote-aware: brackets inside a quoted value do not end its tag. Text-only component bodies do not admit child components; use `raw` or character references to show literal PML delimiters there.
+
+For PML attributes and `text` bodies, decode `&amp;`, `&quot;`, `&apos;`, `&lt;`, `&gt;`, decimal numeric references, and hexadecimal numeric references exactly once. Unknown or malformed references remain literal. Numeric references must represent Unicode scalar values. To display a literal reference such as `&quot;`, emit `&amp;quot;`. Decoded text is never rescanned for PML tags. Markdown bodies receive their character-reference processing once through the Markdown renderer, without a prior PML decoding pass. A `raw` body receives no decoding and ends at the first exact `[/PML:raw]`.
+
+> Component attributes contain logical values, not URL-encoded transport values. The explicit exception is a multi-choice `value` initializer, whose list items follow §7.2. Interaction values always use the negotiated encoding profile; character-reference decoding does not replace interaction-value decoding.
+
+**Duplicate attributes:** reject a component or interaction containing a repeated attribute name, including duplicates produced by a tolerated alias normalization. Never select the first or last value silently. A malformed form member or rule makes that form invalid; retain private drafts and expose the recovery behavior in §11.1.
 
 ### 4.5 Example of a valid message
 
@@ -318,7 +330,7 @@ These attributes may be applied to any component, except for the restrictions no
 - At the message root, a group may contain information components, including `facts` and `dtable`. Standalone interactive components remain outside root-level groups; grouped interactive fields belong inside a `form`.
 - As a direct child of `form`, a group may contain the information components and fields already allowed in that form. `dtable`, `confirm`, and `form` remain forbidden there. `rule` declarations remain direct children of `form`.
 - A group cannot contain another group. Groups are transparent to the existing three-level semantic depth limit; see §8 for the exact child lists and depth accounting.
-- Grouping does not create a task, renderer zone, ID namespace, or field prefix. Root-level groups remain in `shared_history`; groups inside a form participate in that form's lifecycle and zones (§10.3).
+- Grouping does not create a task, renderer zone, ID namespace, or field prefix. A root-level group follows its message's narrative placement: private task context when associated with a task, otherwise `shared_history`. Groups inside a form participate in that form's lifecycle and zones (§10.3).
 
 **Form rules:** a group with an `id` may be a `targets` entry for `action="visible"` or `action="enabled"`. Its effective state gates its descendants and combines with each child's own state; it never overrides a child's `visible="false"` or `disabled="true"`. A group cannot be a `when-*` or `state-*` source because it has no captured value or correctness state. Grouped fields can still be sources and targets under their own IDs (§6.5).
 
@@ -455,7 +467,7 @@ Static image.
 
 | Attribute | Required | Type                                  | Description                |
 | --------- | -------- | ------------------------------------- | -------------------------- |
-| `url`     | Yes      | url                                   | Image URL.                 |
+| `url`     | Yes      | url/ref                               | Public URL or stable private object reference (§5.10). |
 | `alt`     | No       | string                                | Alternative text.          |
 | `size`    | No       | `small` / `medium` / `large` / `full` | Size. Default: `medium`.   |
 | `caption` | No       | string                                | Image caption.             |
@@ -471,9 +483,9 @@ Video or audio player.
 
 | Attribute | Required | Type              | Description                       |
 | --------- | -------- | ----------------- | --------------------------------- |
-| `url`     | Yes      | url               | File URL.                         |
+| `url`     | Yes      | url/ref           | Public URL or stable private object reference (§5.10). |
 | `type`    | Yes      | `video` / `audio` | Media type.                       |
-| `poster`  | No       | url               | Cover image (video only).         |
+| `poster`  | No       | url/ref           | Public URL or stable private image reference (video only). |
 | `caption` | No       | string            | Media caption.                    |
 
 ```
@@ -553,10 +565,14 @@ For private Peppo resources, `url` is the immutable object reference
 (`images/...` or `files/...`). Agents must not emit signed URLs for echo-back
 because they expire and break immutable chat history.
 
+**Resource-reference contract (v1.14):** `image`, `media` (including `poster`), `attachment`, and file capture use the same logical reference domain: a public absolute HTTPS URL or an opaque stable private object reference. Private references are resolved by the renderer using the authenticated account context; they are not relative web URLs. The upload adapter must supply the stable reference for a private upload before capture can complete. Resource metadata needed for echo-back, such as the original filename and MIME type, accompanies the capture through the runner envelope; it is not invented by the agent or added as extra `[[INTERACTION]]` attributes. The interaction carries the reference using §7.2; component `url` attributes use the decoded reference.
+
+**Snapshot and secret exception:** the echo-back rules never authorize re-displaying a password or a retained inactive draft. Apply the snapshot projection in §10.2.2 before creating history or recap content.
+
 Forward compatibility: older renderers may ignore unknown components or render
-them as plain text. Therefore new components should include human-readable
-attributes (`label`, `name`, `phone`, `lat`, `lng`) so degraded output remains
-understandable.
+them as plain text. Human-readable attributes improve a plain-text fallback,
+but do not guarantee visibility when a renderer drops the component. Negotiate
+support before relying on a rich echo-back component.
 
 ### 5.11 divider
 
@@ -623,11 +639,11 @@ Data entry field. The subtype is selected with the `type` attribute.
 | --------------- | -------- | ------- | --------------------------------------------- |
 | `placeholder`   | No       | string  | Help text.                                    |
 | `multiline`     | No       | boolean | Multi-line field. Default: `false`.           |
-| `validate`      | No       | string  | Regex for local validation.                   |
+| `validate`      | No       | string  | Portable regex, whole-string match (§6.6).     |
 | `error-message` | No       | string  | Message shown if validation fails.            |
-| `max-length`    | No       | number  | Maximum characters.                           |
-| `min-length`    | No       | number  | Minimum characters.                           |
-| `password`      | No       | boolean | Hides text while typing. Default: `false`.    |
+| `max-length`    | No       | number  | Maximum Unicode code points. Nonnegative integer. |
+| `min-length`    | No       | number  | Minimum Unicode code points. Nonnegative integer. |
+| `password`      | No       | boolean | Masks capture and requires redacted snapshots/echo-back (§10.2.2). Default: `false`. |
 | `source`        | No       | string  | **(v1.11)** Catalog data source. Valid only as `catalog:{slug}`. Requires `key` and `display`. See §6.1.10. |
 | `key`           | No       | string  | **(v1.11)** Catalog field used as the submitted business key. Required when `source` is present. |
 | `display`       | No       | string  | **(v1.11)** Catalog field shown as the UI label. Required when `source` is present. |
@@ -675,7 +691,7 @@ See §6.1.10 for validity rules, supported types, and renderer fallback behavior
 | ------------- | -------- | ------- | --------------------------------- |
 | `placeholder` | No       | string  | Help text.                        |
 | `integer`     | No       | boolean | Integers only. Default: `false`.  |
-| `decimals`    | No       | number  | Number of decimals. Default: `0`. |
+| `decimals`    | No       | number  | Maximum fractional precision; nonnegative integer. Default: `0`. |
 | `min`         | No       | number  | Minimum value.                    |
 | `max`         | No       | number  | Maximum value.                    |
 
@@ -696,13 +712,17 @@ See §6.1.10 for validity rules, supported types, and renderer fallback behavior
 [[INTERACTION id="height" value="1.75"]]
 ```
 
+**Numeric contract (v1.14):** `number` and `currency` use finite signed base-10 decimal values with a dot separator, no exponent notation, grouping separators, `NaN`, or infinity. `min` and `max` are inclusive and compared as decimal values. `decimals` limits fractional precision after ignoring redundant trailing zeros; excess precision is a validation error, never a request to round. For `number`, `integer="true"` forces effective precision zero; ignore a conflicting nonzero `decimals` with a warning. `integer="false"` adds no constraint but does not remove the default `decimals="0"` limit.
+
+Canonical `number` strings remove a leading plus, redundant leading zeros, and trailing fractional zeros; normalize negative zero to `0`. Thus `1.0` is `1` and `1.2300` is `1.23`. `currency` uses the same decimal value but pads its fractional part to exactly its effective `decimals` count (`1500.5` becomes `1500.50` at precision two). Padding never changes the amount. UI localization does not change these logical values. Initial values are subject to the same validation; do not silently replace an invalid value with zero.
+
 #### 6.1.3 input type="currency"
 
 | Attribute     | Required | Type   | Description                                          |
 | ------------- | -------- | ------ | ---------------------------------------------------- |
 | `placeholder` | No       | string | Help text.                                           |
 | `currency`    | No       | string | ISO 4217 code (`USD`, `MXN`, ...). Default: `USD`.   |
-| `decimals`    | No       | number | Number of decimals. Default: `2`.                    |
+| `decimals`    | No       | number | Maximum fractional precision and canonical padding; nonnegative integer. Default: `2`. |
 | `min`         | No       | number | Minimum value.                                       |
 | `max`         | No       | number | Maximum value.                                       |
 
@@ -770,7 +790,7 @@ Date picker. The interaction value is ISO 8601 (`YYYY-MM-DD`).
 
 #### 6.1.6 input type="time"
 
-Time picker. **The interaction value is always `HH:mm` in 24-hour format, regardless of the presentation mode.** The `am-pm` attribute only affects the UI.
+Time picker. **The logical value is always `HH:mm` in 24-hour format, regardless of the presentation mode.** The `am-pm` attribute only affects the UI; transport encoding follows §7.2.
 
 | Attribute     | Required | Type    | Description                                                  |
 | ------------- | -------- | ------- | ------------------------------------------------------------ |
@@ -782,12 +802,12 @@ Time picker. **The interaction value is always `HH:mm` in 24-hour format, regard
 ```
 
 ```
-[[INTERACTION id="time" value="14:45"]]
+[[INTERACTION id="time" value="14%3A45"]]
 ```
 
 #### 6.1.7 input type="datetime"
 
-Date and time picker. The interaction value is ISO 8601 without timezone: `YYYY-MM-DDTHH:mm` (24h).
+Date and time picker. The logical value is ISO 8601 without timezone: `YYYY-MM-DDTHH:mm` (24h). It is a local wall-clock value, not an instant; timezone interpretation belongs to the application. Transport encoding follows §7.2.
 
 | Attribute     | Required | Type   | Description  |
 | ------------- | -------- | ------ | ------------ |
@@ -798,24 +818,24 @@ Date and time picker. The interaction value is ISO 8601 without timezone: `YYYY-
 ```
 
 ```
-[[INTERACTION id="appointment" value="2026-06-15T14:45"]]
+[[INTERACTION id="appointment" value="2026-06-15T14%3A45"]]
 ```
 
 #### 6.1.8 input type="location"
 
-Location picker. The interaction value is `latitude,longitude` (decimals with point). The renderer may offer device GPS, address search or a mini-map with a pin.
+Location picker. The logical value is `latitude,longitude` (decimal point, no spaces); latitude is in the inclusive range -90 to 90 and longitude -180 to 180. The comma is part of this scalar, not a multi-choice separator. The renderer may offer device GPS, address search or a mini-map with a pin. Transport encoding follows §7.2.
 
 ```
 [PML:input id="location" type="location" label="Your location" /]
 ```
 
 ```
-[[INTERACTION id="location" value="40.7128,-74.0060"]]
+[[INTERACTION id="location" value="40.7128%2C-74.0060"]]
 ```
 
 #### 6.1.9 input type="file"
 
-Single file picker. The renderer uploads the file to an endpoint configured by the ChatApp and obtains a URL that is sent as the interaction value.
+Single file picker. The renderer uploads the file to an endpoint configured by the ChatApp and obtains a public URL or stable private object reference (§5.10). That reference is the logical captured value, encoded for transport per §7.2.
 
 | Attribute  | Required | Type   | Description                                                |
 | ---------- | -------- | ------ | ---------------------------------------------------------- |
@@ -828,10 +848,10 @@ Single file picker. The renderer uploads the file to an endpoint configured by t
 ```
 
 ```
-[[INTERACTION id="photo" value="https://cdn.peppo.com/uploads/abc123.jpg"]]
+[[INTERACTION id="photo" value="images%2Fuser%2Fagent%2Fabc123.jpg"]]
 ```
 
-> The returned URL comes from the ChatApp's storage service; it is not URL-encoded because it is already a valid ASCII-safe URL.
+> Decode this value once to obtain `images/user/agent/abc123.jpg`. A public URL uses the same encoding profile; an existing percent escape inside that URL must survive this one transport decoding pass.
 
 **`capture` (v1.8).** When present, `capture` asks the renderer to open the device's native acquisition UI directly instead of the file browser. It does **not** define the medium — that is still the job of `accept`. The combination of both is what selects the experience:
 
@@ -857,7 +877,7 @@ Single file picker. The renderer uploads the file to an endpoint configured by t
   accept="video/*" capture="true" /]
 ```
 
-> `capture` is a **non-binding hint**. A renderer on a device without the requested hardware (e.g. a desktop without a camera) ignores `capture` and falls back to the standard file picker. The interaction output is identical in both cases: the ChatApp uploads the artifact and emits `[[INTERACTION id="..." value="<url>"]]`. The values `user`, `environment`, and `true` are reserved and are never translated.
+> `capture` is a **non-binding hint**. A renderer on a device without the requested hardware (e.g. a desktop without a camera) ignores `capture` and falls back to the standard file picker. Both paths upload the artifact and serialize the resulting resource reference under the same negotiated encoding profile. The values `user`, `environment`, and `true` are reserved and are never translated.
 
 #### 6.1.10 Catalog data source (v1.11)
 
@@ -869,7 +889,7 @@ Optional attributes that bind an interactive component to an account catalog. Th
 | `key`     | No*      | string | Name of the catalog field whose value is the **submitted business key** (stored value, foreign-key target). |
 | `display` | No*      | string | Name of the catalog field rendered as the human-visible label in the UI (typeahead suggestion, dropdown option, etc.). |
 
-\*When `source` is present, **both** `key` and `display` are **required**. A component with `source` but missing `key` or `display` is **invalid**; the renderer omits the broken control, logs a warning, and continues rendering the rest of the message.
+\*When `source` is present, **both** `key` and `display` are **required**. A missing binding attribute is a configuration error: prevent the owning task/form from completing, preserve private drafts, show native recovery, and keep chat available (§11.1). Never omit a required member and submit the rest, or guess the missing binding.
 
 **`source` value namespace.** The attribute name `source` already exists on `input type="contact"` (v1.9) with reserved values `self`, `manual`, and `contacts`. Catalog binding uses a distinct value shape: `catalog:{slug}`. These namespaces do not overlap.
 
@@ -877,7 +897,7 @@ Optional attributes that bind an interactive component to an account catalog. Th
 
 | Component / subtype | Catalog `source` | Behavior |
 | ------------------- | ---------------- | -------- |
-| `input type="text"` | **Yes**          | Typeahead / autocomplete: paginated search against the catalog as the user types; user picks a row or leaves free text if the renderer allows manual entry after fallback. |
+| `input type="text"` | **Yes**          | Typeahead / autocomplete: paginated search against the catalog as the user types; the committed value must be a resolved row key. |
 | `choice`            | **Yes**          | Options are loaded from the catalog (paginated). Static `[PML:opt /]` children are **ignored** when catalog `source` is present. |
 | `input type="contact"` | **No**        | `source` is reserved for contact acquisition (`self` / `manual` / `contacts`). Agents must not emit `catalog:` on `type="contact"`. |
 | All other `input` subtypes (`number`, `currency`, `date`, `time`, `datetime`, `location`, `file`) | **No** | Catalog attributes are invalid on these subtypes; renderers ignore them and show the plain subtype UI. |
@@ -890,25 +910,27 @@ Optional attributes that bind an interactive component to an account catalog. Th
 
 Resolution is **never** delegated to the LLM. The agent declares the binding; the ChatApp fetches rows.
 
-**Interaction serialization — always the key, never the display label:**
+**Committed values and initialization (v1.14).** A catalog `key` must identify a unique row and be a nonempty string. Keys are opaque business values, not component IDs or static option tokens; preserve their case and punctuation. Query text and display labels are transient presentation state, never a committed key. Initial `value` and text-field validation constraints apply to the key, not the label; resolve the label through the authorized catalog. An unknown or unauthorized initial key is an invalid selection, not a label or free-text fallback.
+
+**Interaction serialization — resolved keys only, never query text or display labels:**
 
 | Context | Serialized form |
 | ------- | ---------------- |
 | Standalone `input` | `[[INTERACTION id="cliente" value="RFC-001"]]` |
 | Standalone `choice` (single) | `[[INTERACTION id="cliente" value="RFC-001"]]` — same as a static `opt` id: the **key** value. |
-| Standalone `choice` (`multi="true"`) | `[[INTERACTION id="tags" value="RFC-001,RFC-002"]]` — comma-separated **keys**. |
+| Standalone `choice` (`multi="true"`) | `[[INTERACTION id="tags" value="RFC-001,RFC-002"]]` — individually encoded **keys**, joined by literal commas (§7.2). |
 | Child of `form` | `field-cliente="RFC-001"` — the `field-*` value is the **key**, URL-encoded per §7.2 when needed. |
 
-The display field (`razon_social`, product name, etc.) is for presentation only and must not appear in `[[INTERACTION]]`.
+The display field (`razon_social`, product name, etc.) is for presentation only and must not appear in `[[INTERACTION]]`. A key containing a comma remains one item: keys `a,b` and `c` serialize as `a%2Cb,c`. Split the list before decoding its items. An optional empty selection serializes as the empty string; individual empty keys are invalid.
 
-**Graceful degradation.** When the catalog API is unreachable, `{slug}` is unknown, or the agent lacks read access, the renderer **must not block** the conversation. Fallback behavior:
+**Catalog unavailability (v1.14).** If the API is unreachable, the slug is unknown, or read access is unavailable, preserve the binding and show an inline unavailable state with a retry action. Never substitute an arbitrary typed value for a key or show an empty shell with no recovery. The chat composer remains available; an unavailable required selection may prevent form submission but must not prevent the conversation from continuing.
 
-| Component | Fallback UI |
+| Component | Recovery behavior |
 | --------- | ------------- |
-| `input type="text"` with catalog attrs | Plain single-line text field (same as `type="text"` without catalog attrs). User may type freely; the interaction value is whatever they enter. |
-| `choice` with catalog attrs | Plain text input or empty choice shell with a warning in logs — renderers should prefer plain text entry so the user can still submit a value. |
+| `input type="text"` with catalog attrs | Keep query text separate from committed selection; retry catalog resolution or clear to an optional empty selection. |
+| `choice` with catalog attrs | Show unavailable/retry state; retain a previously resolved selection only while the current authorized catalog contract still validates it. |
 
-Degradation is silent to the user (no error modal); agents should treat free-text fallback values as untrusted relative to catalog keys.
+If the flow needs manual text instead, the agent must deliberately re-emit an unbound `input type="text"` without catalog attributes. That declaration makes the changed value contract explicit. A typed fallback must never masquerade as a resolved key. Key authorization and existence must be checked again when applying the business action; UI selection is not authorization.
 
 **Canonical example:**
 
@@ -965,6 +987,8 @@ Binary switch.
 [[INTERACTION id="notif" value="subscribed"]]
 ```
 
+`required="true"` means the switch must be checked, independently of the strings in `value-on` and `value-off` (§6.6). These two strings must differ, so a submitted value identifies the state unambiguously. Restore a switch with `checked`, not an undeclared `value` attribute. Custom values use the same transport encoding as all other scalar values (§7.2).
+
 ---
 
 ### 6.3 choice
@@ -978,6 +1002,7 @@ Selection between options (buttons, radio, or dropdown).
 | `multi`       | No       | `true` / `false`                 | Multiple selection. Default: `false`.  |
 | `placeholder` | No       | string                           | Initial text (`dropdown` only).        |
 | `required`    | No       | `true` / `false`                 | Required. Default: `false`.            |
+| `value`       | No       | string                          | Initial selected token/key, or encoded item list for `multi="true"`. Empty means no selection. |
 | `source`      | No       | string                           | **(v1.11)** Catalog data source. Valid only as `catalog:{slug}`. Requires `key` and `display`. See §6.1.10. |
 | `key`         | No       | string                           | **(v1.11)** Catalog field used as the submitted business key. Required when `source` is present. |
 | `display`     | No       | string                           | **(v1.11)** Catalog field shown as the UI label. Required when `source` is present. |
@@ -989,9 +1014,13 @@ Selection between options (buttons, radio, or dropdown).
 | Attribute | Required    | Type   | Description                                                                                                                                                       |
 | --------- | ----------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `value`   | Yes         | string | Text visible to the user.                                                                                                                                         |
-| `id`      | Conditional | string | Identifier. **Required if `value` contains spaces, accents or non-`[a-z0-9-]` characters.** If omitted and `value` is valid as an id, it is used as the id.       |
+| `id`      | Conditional | string | Option token matching `[a-z0-9][a-z0-9-]*`, unique within this `choice`. If omitted, `value` may supply the token only when it matches that grammar. |
 
-> **Simplified rule:** always declare explicit `id` on `opt` unless the `value` is a trivial identifier (numbers, short lowercase words without accents). This avoids ambiguity and reduces LLM errors.
+An option token is not a component ID: it may start with a digit and is local to its owning choice. Two different choices may reuse `yes`, `no`, or `10`. It never identifies a standalone interaction, form field, or rule target/source. Catalog keys follow §6.1.10 instead of this static-token grammar. Reject duplicate option tokens within one choice; do not silently select one.
+
+> **Simplified rule:** declare an explicit option `id` whenever the visible `value` is not itself a valid option token. Numeric shorthand such as `value="10"` remains valid.
+
+**Selection initialization and restoration (v1.14).** For a single choice, `value` is the raw option token or catalog key, using ordinary PML attribute escaping. For a multi-choice, `value` is the encoded item list defined in §7.2: encode each token/key separately, then join with literal commas. This is an explicit list-syntax exception to ordinary raw component attributes. Static `value="mon,tue"` selects two tokens; catalog `value="a%2Cb,C%2B%2B"` selects keys `a,b` and `C++`. Resolve labels from the choices/catalog; never treat a label as a key. Unknown initial selections are configuration errors. Empty `value` selects nothing.
 
 #### Single selection
 
@@ -1024,7 +1053,9 @@ Selection between options (buttons, radio, or dropdown).
 
 #### Multiple selection
 
-When `multi="true"`, the selected ids are concatenated in `value` separated by commas without spaces.
+When `multi="true"`, selected tokens or keys are serialized as individually encoded items joined by literal commas without spaces (§7.2). Emit selections in their declared option order; for catalogs use selection order, preserving it on restoration.
+
+**Completion:** a standalone multi-choice keeps selection edits local until the user presses a renderer-provided confirmation action (localized, for example, as "Confirm"). That action validates the selection and emits exactly one interaction. With `required="false"`, confirming no selections emits `value=""`; with `required="true"`, it is a validation error. A single choice completes on selection. Inside a form, neither mode emits independently; the form's submit is the only completion action. These rules add no label attribute or extra interaction format.
 
 ```
 [PML:choice id="days" multi="true"]
@@ -1141,6 +1172,8 @@ AND aceptar-condiciones == true
 
 At least one `when-*` or `state-*` condition is required. Multiple conditions are combined with AND. `PML:rule` has no OR, nested expressions, arithmetic, regex, scripts, or custom formulas.
 
+**Validate rules before showing conditional content.** Never delete a malformed, unsupported, or unresolved condition and evaluate a weaker AND. If the action and all targets can be identified safely, any invalid condition (including an unknown rule attribute or no conditions) makes the whole conjunction false for those targets; show a native diagnostic and log the configuration error. If the action is missing/unsupported, targets are missing/unresolved, or a rule cannot be scoped safely, the form is invalid: withhold its controlled body and submit controls, retain drafts privately, and offer native retry/dismissal while keeping the chat composer available (§11.1). UI rules do not replace backend authorization.
+
 ##### Actions
 
 `action="visible"` controls effective visibility. When the rule conditions are true, the targets are visible; when they are false, the targets are hidden. `rule` components themselves cannot be targets.
@@ -1155,11 +1188,11 @@ Rules combine with the component's declared base state. `visible="false"` remain
 
 ##### Value conditions: `when-<field-id>`
 
-`when-<field-id>="expected-value"` compares the current serialized value of the source component with the expected value.
+`when-<field-id>="expected-value"` compares the source field's **canonical logical value before transport encoding** with the entity-decoded condition literal, using exact string equality. The literal must use the field's canonical format: for example, `when-name="John Smith"`, not `when-name="John+Smith"`; a time uses `14:45`, and a phone uses its decoded leading plus.
 
-- For `choice`, the value is the selected option id. For `choice multi="true"`, the condition is true when the expected option id is selected.
+- For `choice`, the value is the selected option token or catalog key. For `choice multi="true"`, the condition tests whether that one raw literal is a member of the decoded selection; `when-item="a,b"` denotes one key containing a comma, not a list.
 - For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
-- For `input`, the value is the current serialized input value. For validation-shaped conditions, prefer `state-<field-id>` instead of literal value comparisons.
+- For `input`, use its canonical logical value, including the key for a catalog-bound field. Text is not silently trimmed or case-folded. For validation-shaped conditions, prefer `state-<field-id>` instead of literal value comparisons.
 
 Example:
 
@@ -1173,7 +1206,7 @@ Example:
 
 ##### Component correctness: `state-<field-id>`
 
-Component correctness is a renderer-owned runtime state. A component is `correct` when its current value satisfies the constraints declared on the component itself; otherwise it is `incorrect`.
+Component correctness is a renderer-owned runtime state. A field is `correct` when its current value satisfies the common validation predicate in §6.6 and its declared constraints; otherwise it is `incorrect`. Compute this intrinsic result even when a field is inactive, so rule sources remain deterministic. Inactive fields are still excluded from submit validation and serialization.
 
 Only two correctness states are defined:
 
@@ -1251,7 +1284,8 @@ current values
 3. The ChatApp evaluates `PML:rule` components and computes the effective state of all form members, applying each group's inherited state to its contents.
    - If no fields are active, the ChatApp shows a generic form-level error, remains in `live_capture`, and emits no interaction. This prevents an empty submit from being mistaken for cancel.
 4. The ChatApp runs **local validation** on all active interactive children:
-   - `required="true"` → value must not be empty.
+   - Apply the type-specific required/empty rules in §6.6: a required input is nonempty, a required choice has a selection, and a required toggle is checked.
+   - Empty optional inputs and choices pass without running value constraints. Nonempty values must satisfy every applicable constraint.
    - `validate="<regex>"` → value must match (input text).
    - `min` / `max` → numeric range (input number, currency).
    - `min-length` / `max-length` → length range (input text).
@@ -1262,7 +1296,7 @@ current values
    - The user corrects and presses submit again.
 6. **If all validations pass**:
    - The ChatApp emits a single `[[INTERACTION]]` with the form's `id` and a `field-<sub-id>` attribute for each active interactive child.
-   - The form transitions to `final_rendering`.
+   - Freeze this attempt's submitted values and enter the renderer-owned `awaiting-result` substate of `live_capture`. Do not publish a final snapshot until the runner accepts the attempt (§10.2.2).
 
 **Cancel path** (only when `cancel-label` is present):
 
@@ -1271,8 +1305,8 @@ current values
    ```
    [[INTERACTION id="form-id"]]
    ```
-3. **No validation runs.** The form transitions directly to `final_rendering`.
-4. The agent receives the empty bracket and interprets it as cancellation: no data was submitted, the user wants to leave the form.
+3. **No validation runs.** Resolve cancellation through the runner's correlated lifecycle outcome (§10.2.2); its terminal summary includes no draft values. If a submission is already awaiting a result, the runner must resolve the cancellation/acceptance race before finalization.
+4. The agent receives an id-only cancellation request carrying no fields. It does not prove that an earlier pending submission was never processed; the runner resolves that attempt's outcome before finalization.
 
 **How the agent distinguishes submit from cancel:**
 
@@ -1291,11 +1325,11 @@ For a form with active fields `child-1`, `child-2`, ..., `child-n` with values `
 
 **Precise rules:**
 
-- **Each active interactive child of the form contributes exactly one attribute** prefixed with `field-` to the bracket. The suffix is the child's declared `id`. The **value** is the captured value, URL-encoded per §7.2 when it comes from free user text.
+- **Each active field contributes exactly one attribute** prefixed with `field-` to the bracket. The suffix is its declared `id`. Encode its canonical scalar value or selection list using the negotiated profile in §7.2, independently of how it was captured.
 - **Grouped fields use exactly the same rule.** Serialize each active field using its own declared ID, without a group-ID prefix or an extra nesting level. A group contributes no `value` or `field-*` attribute.
 - **Inactive interactive children are omitted**. A child is inactive when its effective visibility or effective enabled state is false.
-- **All active interactive children are always included**, even if they are `readonly` or the user did not touch them (in which case the value is the empty string `""` or the initial `value` declared by the agent).
-- For `choice multi="true"`, selected ids are serialized **comma-separated** inside the value (same as a standalone choice): `field-days="mon,tue,wed"`.
+- **All active fields are always included**, even if untouched or an input is `readonly`. Use each component's actual state: empty input/choice without a value or selection, a toggle's `checked` state and `value-on`/`value-off`, or the declared initializer.
+- For `choice multi="true"`, encode each selected token/key separately and join with literal commas, as for a standalone choice (§7.2): `field-days="mon,tue,wed"`.
 - For catalog-backed `input` or `choice` children (§6.1.10), the serialized value is the catalog **key** field, not the display label: `field-cliente="RFC-001"`.
 - For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
 - The order of the attributes in the serialization should respect document order, traversing each group's contents at that group's position (legibility recommendation; not semantic).
@@ -1308,7 +1342,7 @@ For a form with active fields `child-1`, `child-2`, ..., `child-n` with values `
 | `id`                     | Identifies the root component that originated the interaction.    |
 | `value`                  | (Single-value mode) Value captured from an atomic component.      |
 | `field-<sub-id>`         | (Multi-field mode) Value captured from the form's active `<sub-id>` child. |
-| (no other attributes)    | (Cancel mode) Form was cancelled — `id` only, no data.            |
+| (no other attributes) | Declared cancellation request: `id` only, no fields; the runner resolves its terminal outcome. |
 | Other bare names         | Reserved for future metadata extensions. **Do not use.**          |
 
 > **Why the `field-` prefix.** v1.5 had chosen bare names (`name="..."`) for form fields, which forced marking `id` and `value` as forbidden IDs in children. v1.6 isolates the field space with the `field-` prefix: declarative IDs are free again and the bracket becomes self-describing (any `field-*` attribute is always a form field, regardless of the version of the agent that produced it).
@@ -1356,7 +1390,7 @@ For a form with active fields `child-1`, `child-2`, ..., `child-n` with values `
 
 #### Server validation: re-render with errors
 
-When the backend rejects the submit (e.g. the email is already registered), the agent applies the state-update rule from §7.6: it re-emits the **same form with the same `id`**, preserves previous values via the `value` attribute on each child and adds `error="..."` on the failed child.
+When the backend rejects the submit (e.g. the email is already registered), the agent applies §7.6 to the same correlated task and attempt. It re-emits the **same form with the same `id`**, restores ordinary inputs through `value`, toggles through `checked`, and choices through their declared `value` initializer, and adds `error="..."` on failed fields. Keep grouped field IDs unchanged. A password is never echoed into the update: retain it privately in the renderer for this task if available, or ask the user to enter it again.
 
 ```
 [PML:form id="signup" submit-label="Create account"]
@@ -1384,7 +1418,7 @@ When the backend rejects the submit (e.g. the email is already registered), the 
 [/PML:form]
 ```
 
-The ChatApp detects the same `id` and restores the task to `live_capture` without creating a new block in `shared_history`.
+The ChatApp matches both the component ID and the runner's pending task/attempt identity, then restores editable `live_capture`. The rejected attempt has not created a shared-history block.
 
 #### MVP layout
 
@@ -1427,21 +1461,37 @@ The form is **a single task**. It goes through the full lifecycle like any other
 | Phase             | What happens                                                                                                                                                                                                                  |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `first_rendering` | The full form appears in `task_controls`. If the message includes narrative **outside** the form, that narrative goes to `task_narrative`. Narrative **inside** the form renders inline.                                       |
-| `live_capture`    | The user freely edits any interactive child. Individual components **do not emit** `[[INTERACTION]]`. Validation is inert until submit.                                                                                       |
-| `final_rendering` | After a valid submit, the full form (with its resolved values) is snapshotted immutably to `shared_history`. `task_controls` and `task_narrative` are emptied.                                                                |
+| `live_capture`    | The user edits fields locally. Intrinsic correctness may update for rules; submit validation runs on submit. After emission, `awaiting-result` prevents another logical submission while the runner resolves the attempt. |
+| `final_rendering` | After an accepted terminal outcome, one redacted snapshot projection is committed to `shared_history` (§10.2.2). Rejected attempts return to capture without a snapshot. The task's private zones are emptied on termination. |
 
 #### Edge cases
 
 - **Form with no fields**, directly or inside groups (only passive content + submit): invalid. The renderer omits submit/cancel controls, renders the passive content as narrative/plain flow, and logs a warning. Use `choice` for a CTA or `confirm` for explicit acceptance/cancellation.
 - **Hidden or disabled group**: its fields are inactive, even if individually visible and enabled. They do not validate or serialize; their current values are retained for later reactivation and rule conditions. Passive content remains visible in a disabled but visible group.
 - **`disabled` child**: is not active; it does not validate, does not block `required`, and does not contribute to submit serialization. Use `readonly` for immutable values that must still be submitted.
-- **`readonly` child**: remains active regarding validation and serialization; visually it appears editable but does not accept changes.
-- **Optional active child with no initial value**: is included with value `""` in the serialization.
+- **`readonly` input**: remains active regarding validation and serialization, but does not accept edits. An empty required or otherwise invalid readonly value is an authoring error; expose the configuration diagnostic rather than asking the user to repair a non-editable field. `readonly` is not an undeclared switch/choice attribute.
+- **Optional active input/choice with no initial value/selection**: is included with value `""`. An untouched toggle still serializes its checked state's `value-on` or `value-off`, not an empty placeholder.
 - **Duplicate IDs across children**: the renderer applies the rules from §8.3 (renders the first, ignores the rest; the second does not contribute to the interaction).
-- **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`), directly or through a group: the renderer treats it as plain text and omits it from the interaction. Logs a warning. Grouping never bypasses form restrictions.
+- **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`), directly or through a group: omit that subtree from the form and its interaction, and log a warning. Never activate its controls or publish its contents as fallback narrative. Grouping never bypasses form restrictions.
 - **Submit with zero valid interactive children**: invalid form; no `[[INTERACTION]]` is emitted.
 - **Conditional form with zero active interactive children at submit time**: invalid submit state; no `[[INTERACTION]]` is emitted and the renderer shows a generic form-level error.
-- **v1.5 ↔ v1.6 compatibility**: a v1.6 renderer accepts brackets without a prefix (v1.5 format) during the transition period and processes them as if they carried an implicit `field-`. A v1.5 agent sent to a v1.6 renderer still works. A v1.6 agent sent to a v1.5 renderer emits `field-*` attributes that the v1.5 renderer silently ignores ("unknown attributes are dropped" rule); the agent receives the degraded interaction without fields. For maximum compatibility, the agent should negotiate version via the envelope metadata before choosing the format to emit.
+- **Legacy field-format compatibility**: the ChatApp produces interaction brackets; the agent/backend consumes them. A consumer may accept the v1.5 bare-field format only under an explicitly negotiated legacy profile. New exchanges use `field-*`. Never drop unknown fields and reinterpret an invalid submit as an id-only cancellation. Declarative component support and interaction encoding must both be agreed through envelope metadata (§12.2).
+
+### 6.6 Common validation contract
+
+**(v1.14)** Use the same predicate for a field's intrinsic `correct`/`incorrect` state and for submit validation. Submit additionally excludes inactive fields. A malformed constraint is a configuration error, not a passing field.
+
+| Field | Empty/required semantics |
+| ----- | ------------------------ |
+| `input` | Empty means exactly the empty string, without implicit whitespace trimming. Required empty input is incorrect. Empty optional input is correct and skips regex, ranges, lengths, and type-format checks. A nonempty value must satisfy its subtype format and every declared constraint. |
+| `choice` | Empty means zero selected tokens/keys. Required empty selection is incorrect; optional empty selection is correct. Every selected token/key must be valid in the current options or authorized catalog. |
+| `toggle` | State is always checked or unchecked. A required toggle is correct only when checked, regardless of `value-on`/`value-off`; an optional toggle accepts either state. |
+
+`readonly` does not waive constraints or omit a value. Ordinary value errors in inactive fields cannot block submit and those fields do not serialize; malformed authored configuration invalidates the task/form independently of field activity. Inactive fields retain intrinsic correctness for rule evaluation. Nonempty catalog-bound inputs validate their committed keys; unresolved query text is not a value. An unavailable required catalog field is incorrect; optional empty remains valid.
+
+**Portable regex profile.** `validate` performs a case-sensitive **whole-string** match over Unicode code points using the following subset of [ECMA-262 RegExp syntax](https://tc39.es/ecma262/2025/multipage/text-processing.html#sec-patterns) with implicit Unicode u semantics and no other flags: literal characters, positive/negative character classes and ranges, concatenation, alternation, ordinary or noncapturing groups, dot, greedy `?`, `*`, `+`, and counted quantifiers, and optional start/end anchors. Supported escapes are escaped regex punctuation, backslash, `\d`/`\D` (ASCII digits), `\w`/`\W` (ASCII letters, digits, underscore), and `\n`, `\r`, `\t`. Dot excludes CR, LF, U+2028, and U+2029. Lookaround, backreferences, named groups, inline flags, Unicode property escapes, and host-specific extensions are unsupported. A whole match must consume the complete string, including any trailing newline; do not implement it as an unanchored search. PML attribute references are decoded once before regex parsing; regex backslashes are literal PML attribute data.
+
+Invalid or unsupported patterns, impossible ranges, and negative/noninteger length or precision limits are configuration errors. For an affected form, prevent submit and show the native recovery diagnostic (§11.1); a standalone invalid input cannot complete. Do not silently drop a constraint, round an invalid amount, or substitute a default business value. Length limits count Unicode code points, not bytes or UTF-16 code units. Initial values and restored values use the same predicate.
 
 ---
 
@@ -1463,11 +1513,13 @@ An **interaction** is the serialized result of a user action on an interactive c
 - The `value` attribute contains the user's captured value (URL-encoded per §7.2).
 - The bracket `[[INTERACTION ...]]` is treated as an atomic syntactic component: no child content, no closing tag `[[/INTERACTION]]` for the single-value case.
 
+**Exclusive modes (v1.14):** an interaction contains exactly one `id` and either one `value` (atomic component), one or more distinct `field-*` attributes (form submit), or neither (only the declared cancellation of a form with `cancel-label`). Never combine `value` with `field-*`, repeat attributes, accept fields not owned by the active form, or discard attributes to turn an invalid submit into a cancellation. Canonical emission puts `id` first; consumers may accept any attribute order. Unknown or duplicate interaction attributes invalidate the bracket rather than being silently dropped. A malformed bracket emits no business action and cannot finalize the task.
+
 **Full user-side message:** an interaction may appear alone in the message, or interspersed with plain text if the user also typed something (rare; the normal pattern is an isolated interaction).
 
 ### 7.2 URL encoding of values
 
-When the ChatApp sends values that come from **free user text**, it applies URL encoding (RFC 3986 + `+` for spaces, `application/x-www-form-urlencoded` style).
+**Negotiated v1.14 profile.** The ChatApp encodes **every scalar interaction value**, regardless of whether it came from typing, a predefined option, a catalog, a sensor, or storage. Encode the canonical logical string as UTF-8: leave only ASCII letters, digits, `-`, `.`, `_`, and `~` unchanged; encode space as `+`; encode every other byte as uppercase `%HH`. This is the PML form-style percent-encoding profile; its explicit safe set governs even when a platform helper uses a different default.
 
 | Character | Encoding |
 | --------- | -------- |
@@ -1483,18 +1535,15 @@ When the ChatApp sends values that come from **free user text**, it applies URL 
 | `[`       | `%5B`    |
 | `]`       | `%5D`    |
 
-**Encoded:** values captured as free user text (`input type="text"`, multi-line, etc.).
+`id` and attribute names are structural identifiers and are never URL-encoded. Safe logical values such as `true`, `10`, `RFC-001`, and `1500.50` stay byte-identical. A custom toggle value `a+b` becomes `a%2Bb`; time `14:45` becomes `14%3A45`. Encode a URL's own percent signs too: logical `https://example.com/a%20b` becomes `https%3A%2F%2Fexample.com%2Fa%2520b`. One transport decoding pass restores the original URL, not a URL with its path escapes interpreted.
 
-**Not encoded:**
+**Multiple selections:** encode each nonempty logical option token/key independently, then join the encoded items with literal commas. The consumer first splits on literal commas, then decodes each item exactly once. Thus `a%2Cb,c` means the two keys `a,b` and `c`, while `a,b%2Cc` means `a` and `b,c`. The empty string means no selections; empty individual keys, empty list items, and duplicate selections are invalid. A scalar location's comma is encoded as `%2C`, because its component type declares it to be one value rather than a choice list.
 
-- `id` of any attribute in the interaction (always `kebab-case` ASCII).
-- `value` values that come from IDs predefined by the agent or ChatApp (`choice` options, `confirmed`/`cancelled` values from `confirm`, `true`/`false` or custom from `toggle`).
-- Values generated by sensors or the system (GPS coordinates, ISO 8601 dates, file URLs).
-- Numbers (`input type="number"`, `currency`).
+**Decoding:** use the active component's declared scalar/list type and negotiated profile. Convert `+` to space, validate percent escapes and UTF-8, and decode once only. Reject malformed encodings; do not fall back to guessing a raw value or decode repeatedly. Transport values are not HTML-character-reference strings. Component attributes and rule literals remain logical values, except the explicitly encoded multi-choice initializer (§6.3).
 
-**Non-ASCII UTF-8 characters** (accents, ñ, emojis, etc.): encoded as UTF-8 bytes in hexadecimal (`%XX`). E.g.: `María` → `Mar%C3%ADa`.
+**Legacy exchanges:** v1.13 and earlier use the documented source-dependent profile (free text encoded; many system/predefined values raw). Preserve that behavior only when the whole exchange has explicitly selected that legacy profile; decoding then requires the original component contract. Do not infer the profile from the presence of `%` or `+`, and do not mix profiles across fields of an exchange. The renderer and interaction consumer must agree on v1.14 before using this profile (§12.2). Historical appendix examples retain their historical encoding.
 
-**Note for the Agent (LLM):** the system prompt must explicitly instruct the agent to **decode** URL-encoded values before processing them semantically.
+**Note for the Agent (LLM):** consume values decoded according to this contract, or receive already-decoded values from the application boundary. Never decode an already-decoded value again. Resolve multi-choice lists before reasoning about individual selections.
 
 **Example:**
 
@@ -1532,7 +1581,7 @@ The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to compo
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **No JSON**           | Only `name="value"` attribute syntax, identical to PML's. No object or array level.                                                                                                                                                                    |
 | **No nesting**        | The entire interaction lives on a single logical line. No `[[FIELD ...]]` or closing tags.                                                                                                                                                             |
-| **Compatible**        | A parser that only understands `id` + `value` can ignore `field-*` attributes and process the simple case unchanged. v1.6 → v1.5: silent ignore. v1.5 → v1.6: the v1.6 renderer accepts unprefixed attributes as a temporary alias.                    |
+| **Versioned**         | The ChatApp produces brackets and the agent/backend consumes them. Agree on supported field formats and the encoding profile; never rely on field loss as compatibility or reinterpret a malformed submit as cancel. |
 | **Deterministic**     | Field names are `field-<sub-id>`, where `<sub-id>` is the sub-component's `id`. There are no positions; order is not semantic.                                                                                                                         |
 | **Isolated spaces**   | `id` and `value` are bracket metadata. Fields live exclusively in the `field-*` namespace. This separation eliminates the reserved words that v1.5 imposed on child IDs.                                                                              |
 
@@ -1541,12 +1590,12 @@ The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to compo
 1. `id` always points to the root component (e.g. the form).
 2. Each active field of the compound component is serialized as `field-<sub-id>="<value>"`. The `<sub-id>` is the declarative `id` of the child, untransformed.
 3. Values follow the same URL encoding rules of §7.2.
-4. If a sub-component returns multiple selections (an embedded `choice multi="true"`), its value is serialized with commas: `field-days="mon,tue,wed"`.
+4. For multiple selections, encode each token/key separately, join with literal commas, and split before decoding on receipt (§7.2): `field-days="mon,tue,wed"`.
 5. **No forbidden names** for child IDs: the `field-*` namespace isolates data from bracket metadata.
 6. **(v1.7)** A valid conditional `form` submit includes at least one `field-*` attribute, because a valid submit state must contain at least one active interactive child.
 7. **(v1.13)** Fields inside a `group` retain this same serialization. Group IDs never become field attributes or prefixes, and grouping introduces no new interaction format.
 
-> **v1.5 ↔ v1.6 compatibility.** v1.5 had introduced the `form` component emitting fields as bare attributes (`name="..."`), reserving the names `id` and `value`. v1.6 isolates them under the `field-*` prefix and removes the reservation. v1.6 renderers accept both formats during the transition; v1.6 agents always emit with the prefix. See Appendix E.
+> **v1.5 ↔ v1.6 compatibility.** v1.5 ChatApps serialized form fields as bare attributes, reserving the names `id` and `value`. v1.6 uses the `field-*` prefix. Compatibility belongs to the consumer accepting a negotiated older format, not to a renderer receiving fields from an agent. Current ChatApps emit `field-*`; agents/backend consume them. See Appendix E and the current negotiation contract in §12.2.
 
 ### 7.4 Conversation flow
 
@@ -1564,7 +1613,7 @@ This cycle repeats indefinitely and is known as a **conversation**.
 ### 7.5 Full conversation example
 
 ```
-USER: [[INTERACTION id="user-init" value="I+want+to+buy+some+shoes"]]
+USER: I want to buy some shoes.
 
 AGENT: Great! We have several models available.
 
@@ -1608,6 +1657,19 @@ AGENT: Nike Air Max, size 10. To complete your purchase
 
 USER: [[INTERACTION id="start-checkout" value="start"]]
 
+AGENT: Enter your delivery details.
+
+       [PML:form id="checkout" submit-label="Confirm order"]
+         [PML:input id="name" type="text" label="Full name" required="true" /]
+         [PML:input id="address" type="text" label="Address" required="true" /]
+         [PML:input id="phone" type="contact" label="Phone" required="true" /]
+       [/PML:form]
+
+USER: [[INTERACTION id="checkout" field-name="John+Smith"
+         field-address="123+Main+St%2C+New+York" field-phone="%2B15551234567"]]
+
+--- The runner accepts the correlated checkout attempt. ---
+
 AGENT: Done, John! Here's your summary:
 
        [PML:facts columns="2"]
@@ -1617,9 +1679,10 @@ AGENT: Done, John! Here's your summary:
          [PML:fact label="Shipping"         value="Free"                    /]
          [PML:fact label="Name"             value="John Smith"              /]
          [PML:fact label="Address"          value="123 Main St, New York"   /]
-         [PML:fact label="Phone"            value="+1 555 123 4567"         /]
          [PML:fact label="Estimated delivery" value="3-5 business days"     /]
        [/PML:facts]
+
+       [PML:contact-card phone="+15551234567" label="Delivery phone" /]
 
        [PML:choice id="post-purchase"]
          [PML:opt id="track"    value="Track order"   /]
@@ -1629,9 +1692,9 @@ AGENT: Done, John! Here's your summary:
 
 ### 7.6 State update
 
-When the PML Agent validates an interaction in the backend and determines it is invalid (incorrect discount code, duplicate user, etc.), it can emit a new message containing **the same interactive component with the same `id`** as the immediately previous interaction, adding the `error="Message"` attribute.
+After emitting an interaction, the ChatApp keeps its task in `live_capture` with an `awaiting-result` substate until the runner supplies a correlated outcome (§10.2.2). If backend validation rejects the attempt, the agent may emit **the same interactive component with the same `id`** and an `error="Message"` attribute, under that rejection's task/attempt context.
 
-In this scenario, the ChatApp **does not create a new block** in the shared history: the renderer detects that this is the same task and restores the capture phase, updating the visual component with the error message. This _state update_ prevents the conversation from filling up with repeated failed attempts.
+The renderer restores editable capture and permitted local values without creating a shared-history block for the rejected attempt. Component ID alone is insufficient: IDs may recur in later messages, and an accepted immutable task must not be reopened by a stale rejection. The envelope must correlate the conversation, triggerer, task instance, and attempt. Restore each component using its documented initializer; do not echo passwords. Accepted outcomes commit one terminal snapshot; duplicates/retries of that attempt cannot duplicate it. A transport timeout is an unknown outcome, not automatic acceptance or cancellation; retry/query the same attempt.
 
 **Example:**
 
@@ -1654,7 +1717,7 @@ The backend rejects it. The agent emits:
   value="ABC123" error="Invalid code. Verify and try again." /]
 ```
 
-The renderer updates the same component instead of adding a new one.
+The renderer applies this update only to the correlated rejected attempt, then returns the same task to editable capture. No final history entry exists until a terminal outcome is accepted.
 
 ---
 
@@ -1688,10 +1751,12 @@ The renderer updates the same component instead of adding a new one.
 
 ### 8.3 ID rules
 
-- Unique within a message.
-- Format: `kebab-case` (`[a-z][a-z0-9-]*`).
+- Component IDs are unique within a message.
+- Component ID format: `kebab-case` (`[a-z][a-z0-9-]*`).
 - No spaces, no special characters, must not start with a digit.
 - Duplicate IDs: render the first, log a warning, ignore the rest.
+
+`opt id` is a choice-local option token (§6.3), not a component ID. It matches `[a-z0-9][a-z0-9-]*`, may start with a digit, and must be unique only within its owning choice. Catalog keys are opaque strings under §6.1.10. Neither option tokens nor catalog keys can identify form fields or rule targets/sources.
 
 ---
 
@@ -1701,14 +1766,14 @@ The renderer updates the same component instead of adding a new one.
 
 1. **Always** include `id` on every interactive component.
 2. **Always** use quotes on attribute values (`attribute="value"`).
-3. **Never** use JSON, `< >`, or HTML for components.
+3. Use bracket tags for component structure, never JSON or HTML. Ordinary content and quoted attributes follow §4.4; punctuation is not itself a component syntax.
 4. **Never** use `camelCase` in attribute names; use `kebab-case` or `lowercase`.
 5. **Always** end self-closing components with ` /]` (with space).
 6. **Always** close containers with `[/PML:type]`.
-7. When receiving `[[INTERACTION ...]]`, decode the URL-encoded values **before** reasoning about them. In multi-field mode, read the `field-<sub-id>` attributes ignoring the `field-` prefix to map to the child's `id` in the form.
+7. When consuming `[[INTERACTION ...]]`, apply its negotiated encoding profile exactly once before reasoning. Split multi-choice lists before decoding their items. If the application boundary already decoded values, do not decode them again. In forms, remove the `field-` prefix only to locate the field's component ID.
 8. **In `form`**: include at least one field (`input`, `toggle`, or `choice`), directly or inside a group, and give each field a unique `id` (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`, even through a group. **(v1.6)** Child IDs are free: there are no reserved names anymore.
-9. **When re-emitting a `form`** after a server error: use the same `id` of the form and populate `value="..."` on each child with the last known user value; add `error="..."` only on failed children (§7.6).
-10. **When emitting multi-field interactions (v1.6)**: always use the `field-` prefix in the bracket attribute names (`field-name="..."`, not `name="..."`). The unprefixed v1.5 format is deprecated and v1.6 renderers accept it only as a temporary alias.
+9. **When re-emitting a `form`** for a correlated rejected attempt: preserve form/field IDs, restore inputs with `value`, switches with `checked`, and choices with `value`; add `error="..."` to failed fields (§7.6). Never echo a submitted password into the update.
+10. **When the ChatApp emits a form submit**: use `field-*` attributes. The agent/backend consumes them; it does not send form-field interactions to the renderer. Accept bare v1.5 field attributes only under explicitly negotiated legacy decoding, never by guessing.
 11. **When using `rule` inside `form`**: keep the declaration directly inside `form`, use only `action="visible"` or `action="enabled"`, target members of the same form (including groups and their members), and express conditions using direct or grouped fields with `when-<field-id>="..."` or `state-<field-id>="correct|incorrect"`. A group is a possible target, not a condition source.
 12. **When using `group` (v1.13)**: use its implicit single column, preserve document order, and assign an `id` when targeting it with a form rule. Use only its context-specific allowed children and do not nest groups. Emit it only to renderers supporting v1.13 groups; preserve existing component syntax and interaction formats.
 
@@ -1722,10 +1787,12 @@ Renderers should apply the following policies when receiving imperfect PML:
 | Unknown attribute             | Ignore silently                                  |
 | Attribute in `camelCase`      | Accept as alias of the `kebab-case` equivalent   |
 | Unclosed tag                  | Try to auto-close; if not possible, truncate     |
-| Non-permitted child component | Render as plain text                             |
+| Non-permitted child component | Outside forms, render inert plain text; within forms, apply the omission/configuration rules in §11.1 |
 | Duplicate ID                  | Render the first, ignore the rest                |
 | Semantic depth > 3            | Flatten to three non-`group` levels; `group` is depth-transparent (§8.2) |
 | Nested `group`                | Omit the nested group and its contents; log warning |
+| Duplicate attribute           | Reject the affected component/bracket; do not choose a value |
+| Invalid rule condition        | Evaluate its whole conjunction as false for safely identified targets; never weaken AND |
 
 ---
 
@@ -1766,7 +1833,7 @@ The device's screen-space constraint forces optimization of screen usage, to avo
 
 | Zone             | Visibility           | Persistence           | Interactive | Content                                                       |
 | ---------------- | -------------------- | --------------------- | ----------- | ------------------------------------------------------------- |
-| `shared_history` | All participants     | Permanent, immutable  | No          | Past messages, narrative, snapshots of resolved tasks         |
+| `shared_history` | Shared audience assigned by the authenticated envelope | Permanent, immutable | No | Past messages, narrative, terminal snapshot projections |
 | `task_narrative` | Private to triggerer | Ephemeral             | No          | Narrative that frames the current task (passive components)   |
 | `task_controls`  | Private to triggerer | Ephemeral             | Yes         | The task's interactive component (single per turn)            |
 
@@ -1794,18 +1861,33 @@ The device's screen-space constraint forces optimization of screen usage, to avo
 
 **Rules:**
 
-- Only `shared_history` is persistent and visible to all participants.
+- Only `shared_history` is persistent and visible to its assigned shared audience. Audience assignment is external to PML; "shared" does not override authenticated envelope restrictions.
 - `task_narrative` and `task_controls` are private to the triggerer and ephemeral.
 - There can only be **one `task_controls`** active per conversation per triggering user.
 - The `task_*` zones do not nest, do not stack, do not allow independent scrolling.
+
+**Context-based narrative placement (v1.14):** if a message starts or updates a task, all its root narrative and information components, including root-level groups, belong to that task's private `task_narrative`. Content inside a form stays inline in `task_controls`. A passive-only message with no task association goes directly to `shared_history`; passive-only task updates follow their envelope association instead. Do not publish task context merely because its component is passive.
+
+**Task ownership and scheduling:** one message may declare at most one root interaction owner (`input`, `toggle`, `choice`, `confirm`, or `form`); a form counts as one regardless of its fields. If a message declares several owners, reject its task content atomically, keep its narrative private, show a native diagnostic, and emit no interaction. Never silently select one control. If a valid new task arrives while another is active, defer its whole message privately in arrival order until the current task terminates. The runner envelope distinguishes a new task from a correlated update to the current one. Preserve the active task and its drafts; a new message must not overwrite them. Deferred messages create no visible task zones. Explicit dismissal, cancellation, or expiry can release the current slot under the lifecycle contract below.
 
 #### 10.2.2 Three lifecycle phases
 
 | Phase             | Who triggers it             | What happens                                                                                                                                          |
 | ----------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `first_rendering` | The agent (emits the message) | Narrative paints in `task_narrative`; controls in `task_controls`. Private to the triggerer.                                                          |
-| `live_capture`    | The triggering user         | The user interacts with the controls. Visual feedback in `task_controls`. Still private.                                                              |
-| `final_rendering` | The ChatApp                 | The task closes. An immutable snapshot of narrative + result is promoted to `shared_history`. `task_narrative` and `task_controls` are emptied.       |
+| `live_capture`    | The triggering user and correlated runner outcomes | The user edits privately. After emission, `awaiting-result` retains the pending attempt; rejection restores editing, while acceptance permits finalization. |
+| `final_rendering` | The ChatApp after an authoritative terminal outcome | Commit one immutable, redacted snapshot projection to the assigned shared audience. Clear this task's private zones and activate the next deferred task, if any. |
+
+**Submission resolution:** local validation does not finalize a task. On completion, freeze the attempt's logical values, effective state, source component tree, and narrative context, then emit its interaction once, and enter `awaiting-result` within `live_capture`. A renderer-owned busy state prevents duplicate submission or edits to that attempt; it does not change PML `disabled` attributes or which fields were submitted. The runner supplies the correlated task/attempt identity and accepted/rejected or other terminal outcome through envelope metadata, not extra interaction attributes. Later task-associated narrative updates cannot change that frozen attempt's snapshot source. Exact envelope field names are outside PML.
+
+- Acceptance commits one terminal history entry for the task. Duplicate delivery, retry, or acknowledgement for the same attempt must not duplicate the business action or snapshot; retry/query the same attempt identity.
+- Rejection returns to editable capture with the permitted values and errors (§7.6), with no snapshot of the rejected attempt.
+- Transport failure leaves the outcome unresolved. Retain pending values and provide retry/status recovery; do not infer acceptance from agent text, silence, a new message, or the absence of `error`.
+- A declared form cancellation emits its existing id-only bracket. Native dismissal/expiry without such a declaration uses envelope lifecycle metadata and must not fabricate an id-only interaction. During `awaiting-result`, the runner resolves any race between cancellation/expiry and acceptance before committing one terminal outcome.
+
+**Terminal snapshot projection:** for an accepted submission, include the visible task narrative and passive context plus the accepted active fields, using the effective state frozen for that attempt. Omit hidden content, inactive field values, and retained unsubmitted drafts; omit empty groups left by that projection. Redact password fields with a fixed localized marker such as "Hidden", never their value or length. A cancelled or expired task records its terminal status and a nonsensitive task label, without draft field values. The final snapshot is a presentation projection, not a copy of the full capture tree or transport bracket.
+
+**Password handling:** `password="true"` requires masking in capture and forbids plaintext or length disclosure through snapshots, passive echo-back, accessibility text, tooltips, displayed errors, or renderer diagnostic logs. Agents must not echo submitted passwords into PML, including retry `value` attributes. A correlated rejection may retain the password privately in the renderer; otherwise the user re-enters it. Clear that local secret when the task terminates. Redaction concerns presentation/history: the authorized interaction consumer still receives the ordinary submitted field value under §7.2.
 
 ```
    first_rendering        live_capture          final_rendering
@@ -1831,11 +1913,13 @@ task_controls     live interactive        component + feedback    (empty)
                   component               of the interaction
 ```
 
+During `awaiting-result`, both task zones remain private and `shared_history` is unchanged. The matrix's final snapshot is always the terminal projection above.
+
 **Edge cases:**
 
 - **Message with no task (only narrative).** Does not enter the lifecycle: the narrative renders directly to `shared_history`.
 - **Message with no narrative (only task).** `task_narrative` stays empty during `first_rendering` and `live_capture`. In `final_rendering`, the snapshot contains only the resolved task.
-- **Cancelled or expired task.** A sub-case of `final_rendering`: the snapshot records the cancelled state.
+- **Cancelled or expired task.** Finalize only the runner-resolved terminal outcome; record status without draft values.
 
 **What is NOT in PML:**
 
@@ -1843,10 +1927,10 @@ task_controls     live interactive        component + feedback    (empty)
 
 ### 10.3 Applying the model to components
 
-- **Passive components** (text, markdown, image, media, attachment, map, contact-card, facts, divider, dtable, raw) render **directly in `shared_history`**. They do not traverse `task_narrative` or `task_controls`.
-- **Structural `group`** has no task or lifecycle of its own. At the message root, its passive contents render together in `shared_history`. Inside a form, the group and all its contents stay within the form's existing zones and lifecycle, including its final snapshot; they do not create extra task zones or independently active controls. Form-contained passive content follows the form's placement rather than the standalone passive rule above.
+- **Passive components** (text, markdown, image, media, attachment, map, contact-card, facts, divider, dtable, raw) follow the message/task context in §10.2.1: private narrative for a task-associated message, direct shared history only without a task association.
+- **Structural `group`** has no task or lifecycle of its own. A root group follows that same context-based narrative placement. Inside a form, the group and its contents stay within the form's zones and lifecycle, including the terminal snapshot projection; they create no extra task zones or independently active controls.
 - **Interactive components** (input, toggle, choice, confirm, form) traverse the full lifecycle: `first_rendering` → `live_capture` → `final_rendering`.
-- In a `form`, the lifecycle applies to the form as **a unit**: children do not have their own lifecycle; they live inside the form's `task_controls` while `live_capture` lasts, and the final snapshot includes the full form with resolved values.
+- In a `form`, the lifecycle applies to the form as **a unit**: children do not have their own lifecycle; they live inside the form's `task_controls` during `live_capture`, including `awaiting-result`, and only the applicable terminal projection reaches final history.
 
 **Characterization of `live_capture` per component:**
 
@@ -1854,9 +1938,9 @@ task_controls     live interactive        component + feedback    (empty)
 | ---------- | --------------------------------------------------------------------------------------------------------------------- |
 | `input`    | Keyboard/picker/GPS/file picker open, capture in progress                                                             |
 | `toggle`   | Tappable row, binary state change                                                                                     |
-| `choice`   | Selection of one or more options                                                                                      |
+| `choice`   | Single selection, or local multi-selection followed by renderer confirmation; inside a form, its submit completes capture |
 | `confirm`  | Explicit modal dialog; the chat input is paused while it lasts                                                        |
-| `form`     | The user freely edits any child; none emits `[[INTERACTION]]`. The phase closes only on submit.                       |
+| `form`     | The user edits fields locally. Submit/cancel emits one attempt; a correlated terminal outcome ends capture.             |
 
 ### 10.4 Supported gestures
 
@@ -1891,7 +1975,7 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 
 **group:** present related children as one visual unit in a single vertical column, preserving document order. Use renderer-native spacing to distinguish groups. Keep each child's internal layout and accessibility semantics. Within a form, apply inherited visibility/enabled state immediately and keep the form's single submit/cancel controls.
 
-**input:** open the appropriate keyboard based on `type`; validate as soon as possible without interrupting; show `error` near the field; ask for permissions in context before invoking GPS/camera/files.
+**input:** open the appropriate keyboard based on `type`; compute intrinsic correctness for rules as values change, and show validation errors on completion/submit without interrupting typing; show `error` near the field; ask for permissions in context before invoking GPS/camera/files. Apply password redaction to every display phase.
 
 **toggle:** describe the active state in the `label`; the whole row must be tappable.
 
@@ -1915,20 +1999,26 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | Unknown attribute                                      | Low      | Ignore                                                                                                                                |
 | Attribute in camelCase                                 | Low      | Accept as alias of the kebab-case                                                                                                     |
 | Invalid value                                          | Medium   | Use default                                                                                                                           |
-| Disallowed child                                       | Medium   | Render as text                                                                                                                        |
+| Disallowed child                                       | Medium   | Outside forms, inert text fallback; forbidden form subtrees are omitted without activating controls                                    |
 | Semantic depth > 3                                     | Medium   | Flatten to three non-`group` levels; group wrappers do not count toward semantic depth (§8.2)                                           |
 | Nested `group`                                         | Medium | Omit the nested group and its contents, including any fields; log warning                                                               |
-| `rule` declared inside `group`                         | Medium | Ignore that rule and log warning; declarations must be direct form children                                                            |
+| `rule` declared inside `group`                         | High | Invalid form configuration; withhold uncontrolled content and offer native recovery. Rules must be direct form children                 |
 | Unreadable PML                                         | High     | Render as plain text                                                                                                                  |
 | Forbidden child inside `form` (`confirm`, `dtable`, `form`), directly or through a group | Medium | Omit from the form; does not contribute to `[[INTERACTION]]`; log warning                                               |
 | `form` without any field (`input`, `toggle`, `choice`), directly or inside groups | Medium | Omit submit/cancel controls, render passive content as narrative/plain flow, log warning                                          |
-| Malformed `rule` (missing `action`, missing `targets`, no conditions, unsupported action/state) | Medium | Ignore the rule, render the form without that conditional behavior, log warning                                                         |
-| `rule` references unknown source or target IDs | Medium | Ignore the missing references; if the rule has no valid targets or no valid conditions left, ignore the rule and log warning             |
-| `rule` uses a group or other non-field ID as a condition source | Medium | Ignore the invalid reference using the same policy as an unknown source; groups have no value/correctness state                      |
-| `rule` targets another `rule` | Low | Ignore that target and log warning                                                                                                      |
+| Invalid rule condition, unsupported state, or no conditions, with safely identifiable action/targets | Medium | Entire conjunction is false; gate its targets, show native diagnostic, log warning; never drop a condition |
+| `rule` references an unknown source or a group/non-field as source | Medium | Entire conjunction is false for safely identifiable targets; no source value is invented or removed                                  |
+| Missing/unsupported rule action, missing/unresolved targets, or unscopable rule | High | Invalid form: withhold body/submit, preserve private drafts and expose native retry/dismissal with chat available                         |
+| `rule` targets another `rule` or an auxiliary child | High | Invalid target scope; treat the form as invalid and offer native configuration recovery                                                  |
 | `rule action="enabled"` targets information components | Low | Ignore those passive targets and log warning; structural groups are valid enabled targets                                              |
-| Multi-field bracket with attributes without `field-` prefix (v1.5 format) | Low | Accept as a temporary alias in v1.6 renderers; log migration warning. v1.6 agents must always emit `field-*`.                          |
-| Multi-field bracket with `field-*` attributes sent to a v1.5 parser | Low | The v1.5 parser silently ignores them; the agent receives the degraded interaction (only `id`). Negotiate version via the envelope.   |
+| Duplicate component/interaction attribute | High | Reject the affected component/bracket; an affected form is invalid. Never reinterpret a malformed bracket as cancellation                      |
+| Mixed interaction modes, unknown field, malformed encoding | High | Reject the interaction, keep the task unresolved/recoverable, and emit no business action                                                  |
+| Invalid constraint or invalid required readonly input | High | Configuration error: prevent completion/submit and offer native recovery; do not waive the constraint                                        |
+| Several root interaction owners in one message | High | Reject that message's task content atomically; keep narrative private, show diagnostic, emit no interaction                                  |
+| Bare v1.5 field attributes | Medium | Consumer accepts only under a negotiated legacy field format; otherwise reject, never guess                                                  |
+| Unsupported field format or encoding profile | High | Negotiate a supported exchange before completion; do not drop attributes or reinterpret their contents                                        |
+
+**Native configuration recovery:** diagnostics are renderer UI, not new PML components or synthetic interactions. Keep the chat composer available and provide retry/dismissal through the runner lifecycle. Preserve private drafts until explicit dismissal or task termination. Do not publish malformed or withheld form contents as fallback shared narrative. A native dismissal sends no id-only bracket unless the form actually declares `cancel-label`.
 
 ### 11.2 Resource errors
 
@@ -1937,6 +2027,8 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | Image fails to load  | Show `alt` + placeholder                                          |
 | Media fails to load  | Message + retry button                                            |
 | File upload fails    | Show error and allow retry; do not emit `[[INTERACTION]]`         |
+| Catalog unavailable | Keep binding, show inline retry, retain only validated selection; chat remains available (§6.1.10) |
+| Private resource lacks a stable reference | Treat capture as incomplete; retry resolution/upload rather than exposing a signed URL |
 
 ### 11.3 Validation errors (user)
 
@@ -1955,7 +2047,18 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.13 — October 2026 (this specification)
+PML v1.14 — October 2026 (this specification)
+  - Quote-aware lexical scanning, character references, exclusive interaction modes
+  - Negotiated uniform scalar encoding and per-item multi-choice escaping
+  - Type-specific required/empty validation, portable regex, numeric precision
+  - Choice restoration and completion; resolved catalog keys and stable resource refs
+  - Conservative rule errors, context-based narrative, pending backend resolution
+  - Redacted terminal snapshots and deterministic task scheduling
+  - Corrected contracts require implementation/version agreement; not purely additive
+```
+
+```
+PML v1.13 — October 2026
   - New structural group: implicit single column, optional id, no own interaction
   - Form rules can target group visibility/enabled state
   - Grouped fields inherit group state and retain their own field-* keys
@@ -2038,8 +2141,8 @@ PML v1.6 — May 2026
   - Explicit namespace separation in [[INTERACTION]]:
       · metadata: id, value
       · data: field-<sub-id>
-  - v1.6 renderers accept the v1.5 format (unprefixed attributes) as a temporary alias
-  - v1.5 renderers that receive v1.6 brackets ignore field-* ("unknown attributes" rule)
+  - v1.6 interaction consumers may accept negotiated v1.5 bare-field brackets
+  - ChatApps serialize fields; agents/backend consume them, with no field-loss fallback
   - No changes in the declarative syntax: PML components are written exactly the same
 ```
 
@@ -2089,6 +2192,10 @@ PML v1.1 — April 2026
 4. Agents must **decode** attributes in `kebab-case` even if they were trained with `camelCase`.
 5. **Backward compatibility is mandatory for additive components.** Preserve the syntax, defaults, behavior, and interaction wire format of previously valid PML. Existing renderers must remain able to process messages that use only the components they already support; adding a component must not require changes to those components. Support for a new component still requires renderer implementation and version negotiation. Unknown-component fallback is not a guarantee that new grouped content or rules will work on an older renderer.
 
+**Version agreement (v1.14):** before activating a task, the application/runner must agree with both renderer and interaction consumer on the declarative features, field format, and value-encoding profile used for that exchange. Advertise capabilities and select their common supported profile through envelope metadata; a renderer version alone does not prove that its consumer can decode the same wire values. Preserve the selected profile for every attempt/update of that task. If agreement is unavailable, explicitly use a mutually supported legacy flow or plain conversation; never guess from payload characters, drop fields, or rely on unsupported components. The agent emits declarative PML; the ChatApp serializes interactions; the agent/backend consumes them.
+
+Minor versions may correct ambiguous or erroneous **semantic contracts** while keeping bracket syntax, but must name behavioral changes, require version agreement, and document migration. Such a release is not automatically additive or byte-compatible. Incompatible structural syntax still requires a major version. v1.14 changes reserved-character encoding, catalog failure handling, and terminal-state behavior; old clients do not acquire those behaviors merely by accepting the same tags.
+
 ### 12.3 Candidates for future versions
 
 **Future — form extensions** (compatible, additive):
@@ -2099,7 +2206,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.14+ — new components:**
+**v1.15+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -2164,19 +2271,25 @@ PML v1.1 — April 2026
 (* ─── Message ──────────────────────────────────────────────────────── *)
 message          = { text_chunk | component | interaction } ;
 
-text_chunk       = /[^[]+/ ;   (* any text not starting with "[" *)
+text_chunk       = text_char { text_char } ;
+text_char        = ? one Unicode scalar not starting a structural delimiter
+                     in the current context, as defined in section 4.4 ? ;
 
 (* ─── Components ───────────────────────────────────────────────────── *)
-component        = self_closing | container ;
+component        = self_closing | container | raw_container ;
 
-self_closing     = "[PML:" type attr_list " /]" ;
+self_closing     = "[PML:" type attr_list WS "/]" ;
 container        = open_tag inner close_tag ;
-open_tag         = "[PML:" type attr_list "]" ;
-close_tag        = "[/PML:" type "]" ;
+open_tag         = "[PML:" non_raw_type attr_list [ WS ] "]" ;
+close_tag        = "[/PML:" non_raw_type "]" ;
+raw_container    = "[PML:raw" attr_list [ WS ] "]" raw_body "[/PML:raw]" ;
+raw_body         = ? zero or more Unicode scalars up to, but not including,
+                     the first exact raw closing tag; no entity decoding ? ;
 
-inner            = { component | text_chunk } ;   (* except in raw *)
+inner            = { component | text_chunk } ;
 
 type             = std_component | aux_component ;
+non_raw_type     = type - "raw" ;
 
 std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "image"    | "media"    | "divider"| "raw"
@@ -2193,22 +2306,31 @@ attr_name        = /[a-z][a-z0-9-]*/ ;
 attr_value       = '"' /[^"]*/ '"' | "'" /[^']*/ "'" ;
 
 (* ─── Interaction (ChatApp → Agent side) ───────────────────────────── *)
-interaction      = "[[INTERACTION" WS interaction_attrs "]]" ;
-interaction_attrs= id_attr { WS (value_attr | field_attr) } ;
-id_attr          = "id" "=" attr_value ;            (* required           *)
-value_attr       = "value" "=" attr_value ;         (* single-value mode  *)
-field_attr       = "field-" sub_id "=" attr_value ; (* multi-field (v1.6) *)
-sub_id           = /[a-z][a-z0-9-]*/ ;
-                   (* "id" is required; in single-value, "value" is        *)
-                   (* included; in multi-field, one "field-<sub>" is       *)
-                   (* included per active field, direct or grouped.       *)
-                   (* group IDs never produce fields or key prefixes.     *)
-                   (* id-only interactions are valid only for form cancel. *)
-                   (* v1.6 renderers accept bare attributes (v1.5 format)  *)
-                   (* as a temporary alias during the transition.          *)
+interaction      = "[[INTERACTION" WS interaction_body [ WS ] "]]" ;
+interaction_body = single_attrs | submit_attrs | id_attr ;
+single_attrs     = id_attr WS value_attr | value_attr WS id_attr ;
+submit_attrs     = id_attr WS field_list
+                 | field_list WS id_attr [ WS field_list ] ;
+field_list       = field_attr { WS field_attr } ;
+id_attr          = "id=" quoted_component_id ;
+value_attr       = "value=" attr_value ;
+field_attr       = "field-" component_id "=" attr_value ;
+quoted_component_id = '"' component_id '"' | "'" component_id "'" ;
+component_id     = /[a-z][a-z0-9-]*/ ;
+option_token     = /[a-z0-9][a-z0-9-]*/ ;
 
-WS               = /\s+/ ;
-WS_eq            = "=" ;
+(* Attribute names are unique, including after tolerated alias mapping. *)
+(* Interactions have exactly one id and no mixed/unknown modes.         *)
+(* value mode belongs to an atomic active component; field mode belongs *)
+(* to a form with at least one active owned field. id-only is only the  *)
+(* cancellation declared by form cancel-label. Validate ownership and    *)
+(* the negotiated scalar/list encoding after structural parsing.        *)
+(* group IDs never produce fields or key prefixes.                     *)
+(* Matching container types and context-specific shapes are semantic    *)
+(* constraints: group/raw require containers; rule is self-closing; a   *)
+(* catalog-backed choice may self-close, static choice needs opt.       *)
+
+WS               = /[ \t\r\n]+/ ;
 
 (* ─── Nesting restrictions ─────────────────────────────────────────── *)
 (* Only these container → direct child relationships are accepted:       *)
@@ -2435,11 +2557,11 @@ No changes in the form declaration: `[PML:input id="name" ... /]` is written exa
 
 | Scenario                                            | Behavior                                                                                                                                                                                                       |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| v1.6 agent → v1.6 renderer                          | Expected case: the agent emits `field-*` and the renderer understands them natively.                                                                                                                           |
-| v1.5 agent → v1.6 renderer                          | The v1.6 renderer accepts bare attributes (`name="..."`) as a temporary alias and processes them as if they carried an implicit `field-` prefix. Logs a migration warning.                                     |
-| v1.6 agent → v1.5 renderer                          | The v1.5 renderer does not understand `field-*` and silently ignores them (rule §9.2 "unknown attributes"). The agent receives the degraded interaction: only the form's `id`, with no fields.                  |
-| v1.6 agent with a form with no interactive children | Emits `[[INTERACTION id="form-id"]]` with no `field-*` attributes. Identical to v1.5.                                                                                                                          |
-| Version negotiation                                 | The turn envelope must declare the version supported by the renderer (`pml-version: "1.5"` or `"1.6"`) so the agent picks the format to emit.                                                                  |
+| v1.6 ChatApp → v1.6 agent/backend | The ChatApp emits `field-*`; the interaction consumer interprets those fields. |
+| v1.5 ChatApp → v1.6 agent/backend | A consumer supporting the negotiated legacy profile may accept bare field attributes and map them to the prefixed field namespace. |
+| v1.6 ChatApp → v1.5 agent/backend | A consumer without the field format cannot safely process the submission. Negotiate a supported format; dropping fields is not safe compatibility. |
+| v1.6 ChatApp with a form with no interactive children | Historical v1.6 behavior could emit an id-only submit; v1.6.1 and later prohibit empty forms and reserve the declared id-only interaction for cancellation. |
+| Version negotiation | The envelope must agree on renderer declarative support and consumer interaction formats before an exchange; the ChatApp serializes, while the agent/backend consumes. See the current contract in §12.2. |
 
 ### E.5 Impact table by section
 
@@ -2751,7 +2873,7 @@ URLs expire and break immutable history.
 ### J.5 What is NOT in v1.10
 
 - No changes to interaction serialization.
-- No signed URL policy.
+- No signed URL minting, lifetime, or refresh API; private echo-back nevertheless requires stable references (§J.3).
 - No full contact object payload.
 - No multi-file upload contract.
 - No requirement that the runner fully parse or validate PML.
@@ -2906,4 +3028,81 @@ For a renderer without group support, the agent must emit a group-free form inst
 
 ---
 
-_PML v1.13 — PEPPO Platform — October 2026_
+## Appendix N — Migration v1.13 → v1.14
+
+v1.14 resolves contradictions and incomplete contracts found across syntax, capture, rules, serialization, and history. It preserves bracket tag forms and interaction attribute modes, but **does not claim unchanged behavior or byte-identical values for every legacy exchange**. In particular, reserved-character encoding, strict catalog recovery, validation, and task finalization require implementation agreement.
+
+### N.1 Migration decisions
+
+| Issue | v1.14 contract | Migration consequence |
+| ----- | -------------- | --------------------- |
+| Brackets, Markdown, and regex | Recognize delimiters before entity decoding; scan quoted attributes without treating their brackets as tag ends (§4.4). | Preserve Markdown and regex literals. Decode entities once; never rescan decoded text as PML. |
+| Duplicate attributes and interaction modes | Reject duplicates, unknown interaction attributes, and mixed `value`/`field-*` modes (§7.1, Appendix B). | Never drop fields and accidentally interpret an invalid submit as cancel. |
+| Value encoding | Encode every scalar under the negotiated v1.14 profile; encode multi-choice items before joining (§7.2). | Agree on the profile with both producer and consumer. Retain source-dependent decoding only for explicit legacy exchanges. |
+| Rule comparisons | Compare canonical logical values, before transport encoding (§6.5). | Condition literals use spaces, leading plus signs, and raw business keys; they are not wire-encoded strings. |
+| Required and optional values | Required input means nonempty; choice means a selection; toggle means checked. Empty optional input/choice skips value constraints (§6.6). | Reuse this predicate for correctness and submit; distinguish value errors from invalid authored configuration. |
+| Restoration and multi-choice completion | Restore input `value`, toggle `checked`, and choice `value`; standalone multi-choice has renderer confirmation (§6.3). | Add the documented choice initializer. A form remains the sole owner of its fields' submission. |
+| Catalog recovery | Bound values are resolved, authorized nonempty keys or an allowed empty selection (§6.1.10). | Supersedes v1.11's silent free-text/empty-shell fallback. Collect manual text only through an explicitly unbound component. |
+| Resource references | Capture and display agree on public HTTPS URLs or stable private refs (§5.10). | Upload adapters must expose the stable private ref and required resource metadata; signed playback URLs remain renderer-local. |
+| Rule errors | Invalid conditions never weaken AND; unsafe rule configuration invalidates the form (§6.5, §11.1). | Replace permissive dropping of conditions with false gates or native configuration recovery. |
+| Narrative placement | Task-associated root content, including passive groups, is private narrative (§10.2.1). | Supersedes unconditional passive/root-group placement in shared history. Passive-only unrelated messages remain direct history. |
+| Finalization and snapshots | Local completion waits in `awaiting-result`; a correlated terminal outcome commits one redacted projection (§10.2.2). | Update renderer/runner integration. Rejections do not create history; retries do not duplicate actions or snapshots. |
+| Multiple tasks | Reject several root owners in one message; defer later valid task messages without overwriting active drafts (§10.2.1). | A form is one owner. Deferred tasks do not create stacked zones. |
+| Option IDs and portability | Component IDs remain message-wide; static option tokens are local and may start with a digit. Regex and numeric precision use explicit contracts (§6). | Numeric size shorthand remains valid. Check host-specific regex and numeric behavior against the portable profile. |
+
+### N.2 Encoding vectors
+
+These vectors use v1.14. Component attributes normally hold the **logical** column; interaction attributes hold the **wire** column. The explicit multi-choice `value` initializer uses the encoded list column too.
+
+| Type | Logical value or selected items | Wire value |
+| ---- | ------------------------------- | ---------- |
+| Scalar | `John Smith` | `John+Smith` |
+| Scalar | `a+b` | `a%2Bb` |
+| Scalar | `100%` | `100%25` |
+| Scalar | `María` | `Mar%C3%ADa` |
+| Scalar time | `14:45` | `14%3A45` |
+| Scalar location | `40.7128,-74.0060` | `40.7128%2C-74.0060` |
+| Scalar URL | `https://example.com/a%20b` | `https%3A%2F%2Fexample.com%2Fa%2520b` |
+| Multi-choice | First key `a,b`, second key `c` | `a%2Cb,c` |
+| Multi-choice | First key `a`, second key `b,c` | `a,b%2Cc` |
+| Multi-choice | First key `a,b`, second key `C++` | `a%2Cb,C%2B%2B` |
+| Empty optional input/choice | Empty string/no selections | Empty string |
+
+Split a multi-choice wire list before decoding each item exactly once. Do not split a scalar location, decode a URL twice, or guess the encoding profile from characters. `true`, `false`, `10`, `RFC-001`, and ordinary decimal strings stay unchanged under this profile.
+
+### N.3 Conformance scenarios
+
+These are contract examples for consumer implementations, not a claim that a renderer has been updated or tested here.
+
+| Scenario | Required result |
+| -------- | --------------- |
+| A quoted regex contains a character class; Markdown contains a normal link. | Parse both without treating their brackets as malformed PML. |
+| An entity decodes to a PML-looking delimiter. | Display literal content; do not parse the decoded string as a component. |
+| A bracket repeats `value`, repeats one field, combines `value` with fields, or names an unowned field. | Reject it without a business action, cancellation, or final snapshot. |
+| A form has no declared cancel action and receives an id-only bracket. | Reject it; native dismissal uses lifecycle metadata instead. |
+| Required toggle is unchecked and has nonempty `value-off`. | Incorrect; it blocks submit while active. |
+| Optional empty number/date or regex-constrained text input. | Correct empty value; skip value constraints and serialize empty if active. |
+| A hidden field has an invalid ordinary value; a hidden field has a malformed constraint. | Omit the first from submit validation; the second is an invalid authored configuration and prevents completion. |
+| Rejected form previously selected a plan and checked a toggle. | Restore choice `value` and toggle `checked` under the same correlated task. |
+| Standalone multi-choice selects two options. | Keep edits local, then emit one encoded list on renderer confirmation. |
+| Required catalog cannot resolve, or a binding lacks `key`/`display`. | Unavailability offers retry without manual substitution; malformed configuration prevents task completion. Chat stays usable. |
+| Private capture finishes. | Supply a stable private ref and metadata; encode the ref for the interaction and use its decoded form for rich echo-back. |
+| A rule has one valid condition and one misspelled source. | Entire conjunction is false for safely identified targets, not the surviving condition alone. |
+| Rule placement/action/targets cannot be validated safely. | Withhold uncontrolled form content and submit; offer native retry/dismissal. |
+| A message includes task controls plus root text/image/group context. | Keep the root context private until the task's terminal projection. |
+| Local validation succeeds, then backend rejects. | Wait privately, restore capture, and publish no rejected-attempt snapshot. |
+| An accepted attempt is retried or acknowledged twice. | One logical business action and one immutable task snapshot. |
+| Timeout or cancellation races with a pending submission. | Runner resolves the same attempt; do not infer or publish a competing terminal outcome. |
+| Accepted form includes a password and a retained inactive draft. | Redact the password without length disclosure and omit the inactive draft value. |
+| Cancelled or expired form contains entered values. | Publish status without draft values and clear local secrets at termination. |
+| Two standalone tasks occur in one message; a new task arrives during another. | Reject the first malformed task set atomically; defer the later valid task without overwriting capture state. |
+
+### N.4 Release and historical interpretation
+
+The renderer consumes declarative PML, the ChatApp produces interactions, and the agent/backend consumes their values. Agreement must cover all directions (§12.2). Old historical examples keep their stated versions; do not recode them as if they had emitted v1.14. The factual producer/consumer labels in Appendix E.4 and the contradictory scope statement in J.5 are corrected as errors, not new historical features.
+
+Measure token efficiency on representative messages and their required prompts, including retry/error rates. This release makes no unmeasured claim of superiority over every alternative. No parser, renderer, SDK, or runtime tooling is introduced into this specification repository.
+
+---
+
+_PML v1.14 — PEPPO Platform — October 2026_

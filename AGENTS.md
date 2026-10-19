@@ -10,7 +10,7 @@ This file orients Codex when working on this sub-project. It is complementary to
 
 ## What this project is
 
-A **pure Markdown specification, in English**. There is no code, build system, tests, dependencies, or infrastructure. The spec defines **PML (PEPPO Markup Language)**: a bracket-tag markup language for LLMs to emit interactive UI components inside a chat. Current version: **v1.13**.
+A **pure Markdown specification, in English**. There is no code, build system, tests, dependencies, or infrastructure. The spec defines **PML (PEPPO Markup Language)**: a bracket-tag markup language for LLMs to emit interactive UI components inside a chat. Current version: **v1.14**.
 
 This is not an implementation repo. Renderers, parsers, SDKs, and tooling live in other (future) repos.
 
@@ -52,7 +52,7 @@ PML is **internal PEPPO infrastructure**, not a public competitive specification
 
 ### Editing `README.md`
 
-1. Any normative change bumps the minor version (for example, v1.13 → v1.14) and requires:
+1. Any normative change bumps the minor version (for example, v1.14 → v1.15) and requires:
    - A new entry in §12.1 (versioning).
    - A new migration appendix (E, F, G, ...).
    - Updating the footer `_PML v1.x — PEPPO Platform — Month 2026_`.
@@ -64,8 +64,8 @@ PML is **internal PEPPO infrastructure**, not a public competitive specification
 
 When adding examples or documenting new components, respect:
 
-- **kebab-case** in component, attribute, and ID names (`[a-z][a-z0-9-]*`). Never camelCase, snake_case, or uppercase.
-- **No JSON.** No `< >`. No HTML.
+- **kebab-case** in component and attribute names (`[a-z][a-z0-9-]*`). Component IDs follow the same letter-first format and are unique within a message. `opt` IDs are option tokens scoped to their owning `choice` and may start with a digit, as specified in `README.md`. Never camelCase, snake_case, or uppercase in structural names or IDs.
+- **No JSON, `< >`, or HTML as PML structural syntax.** These may appear as ordinary quoted content subject to the escaping rules in `README.md`; such content is text, not HTML markup.
 - **Bracket syntax:** `[PML:type ...]` containers; `[PML:type ... /]` self-closing (with a space before `/]`).
 - **Interactions:** `[[INTERACTION id="..." value="..."]]` for single-value; `[[INTERACTION id="..." field-x="..." field-y="..."]]` for multi-field (v1.6).
 - **Double quotes** preferred on attribute values.
