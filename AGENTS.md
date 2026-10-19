@@ -10,7 +10,7 @@ This file orients Codex when working on this sub-project. It is complementary to
 
 ## What this project is
 
-A **pure Markdown specification, in English**. There is no code, build system, tests, dependencies, or infrastructure. The spec defines **PML (PEPPO Markup Language)**: a bracket-tag markup language for LLMs to emit interactive UI components inside a chat. Current version: **v1.6**.
+A **pure Markdown specification, in English**. There is no code, build system, tests, dependencies, or infrastructure. The spec defines **PML (PEPPO Markup Language)**: a bracket-tag markup language for LLMs to emit interactive UI components inside a chat. Current version: **v1.13**.
 
 This is not an implementation repo. Renderers, parsers, SDKs, and tooling live in other (future) repos.
 
@@ -45,13 +45,14 @@ PML is **internal PEPPO infrastructure**, not a public competitive specification
 **Rules that derive from this positioning:**
 
 - **Do not bump to v1.7+ without a working renderer.** Iterating the spec without code hides lack of validation. If the user asks for new features (cancel-label, form-section, cross-field validation, stepper, etc.), remind them of this rule and confirm before proceeding.
+- **New components must be additive and backward compatible.** Preserve existing components' syntax, defaults, behavior, and interaction wire format; existing renderers must continue rendering previously valid PML without changes. Support for a new component still requires renderer implementation and follows the specification's unknown-component and version-negotiation rules. This complements, and does not waive, the working-renderer requirement above.
 - **Do not promote the spec externally** (GitHub release, blog post, social media, communities) unless the user explicitly asks.
 
 ## Operating rules
 
 ### Editing `README.md`
 
-1. Any normative change bumps the minor version (v1.6 → v1.7) and requires:
+1. Any normative change bumps the minor version (for example, v1.13 → v1.14) and requires:
    - A new entry in §12.1 (versioning).
    - A new migration appendix (E, F, G, ...).
    - Updating the footer `_PML v1.x — PEPPO Platform — Month 2026_`.

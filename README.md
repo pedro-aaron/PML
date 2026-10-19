@@ -1,6 +1,8 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.12
+## Complete specification v1.13
+
+> **v1.13 (October 2026).** Adds the structural `group` container with an implicit single-column layout and an optional `id`. Inside a `form`, rules can target a group to control its descendants' effective visibility or enabled state. Grouped fields retain their own IDs and the existing `field-*` serialization. Existing components and messages without groups keep their syntax, defaults, and behavior. See §4.8, §6.5, and Appendix M.
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
@@ -38,6 +40,7 @@
     - [4.5 Example of a valid message](#45-example-of-a-valid-message)
     - [4.6 Component types](#46-component-types)
     - [4.7 Global attributes](#47-global-attributes)
+    - [4.8 group](#48-group)
 - [5. Information components](#5-information-components)
     - [5.1 text](#51-text)
     - [5.2 markdown](#52-markdown)
@@ -82,6 +85,7 @@
 - [Appendix J — Migration v1.9 → v1.10](#appendix-j--migration-v19--v110)
 - [Appendix K — Migration v1.10 → v1.11](#appendix-k--migration-v110--v111)
 - [Appendix L — Migration v1.11 → v1.12](#appendix-l--migration-v111--v112)
+- [Appendix M — Migration v1.12 → v1.13](#appendix-m--migration-v112--v113)
 
 ---
 
@@ -266,6 +270,10 @@ Hi Pedro, what would you like to do today?
 - `confirm` — Confirmation dialog
 - `form` — Field container with single submit, optional cancel, and optional conditional rules
 
+**Structural components (no interaction of their own):**
+
+- `group` — Single-column container for related information components or form content
+
 **Auxiliary components (only valid inside their container):**
 
 - `opt` — Option inside `choice`
@@ -281,11 +289,65 @@ These attributes may be applied to any component, except for the restrictions no
 
 | Attribute  | Applies to    | Type             | Description                                                              |
 | ---------- | ------------- | ---------------- | ------------------------------------------------------------------------ |
-| `id`       | All           | string           | Identifier. **Required on interactives**, optional on passives.          |
-| `disabled` | Interactives  | `true` / `false` | Disables the interaction. Default: `false`.                              |
+| `id`       | All           | string           | Identifier. **Required on interactives**, optional on passives and `group`; required on any rule target. |
+| `disabled` | Interactives, `group` | `true` / `false` | Disables the interaction; on `group`, gates descendant fields. Default: `false`. |
 | `visible`  | All           | `true` / `false` | If `false`, the component is not rendered. Default: `true`.              |
 | `tooltip`  | All           | string           | Help text shown on long-press (mobile) or hover (desktop).               |
 | `error`    | Interactives  | string           | Error message associated with the component. Rendered below it.          |
+
+### 4.8 group
+
+**(v1.13)** Structural container that identifies related components as one visual unit. Its children are stacked vertically in document order in an **implicit single column**. The renderer adapts their widths and spacing to the available screen space. No layout attribute is needed: this version defines no `layout`, `rows`, `columns`, `row`, `column`, `at`, or `areas` attributes for `group`.
+
+```
+[PML:group]
+  [PML:text type="title"]Order summary[/PML:text]
+  [PML:facts]
+    [PML:fact label="Product" value="Coffee" /]
+    [PML:fact label="Total" value="$120" /]
+  [/PML:facts]
+[/PML:group]
+```
+
+`group` uses the container form with a closing tag. It has no value, controls, submit action, or interaction of its own. An empty group renders nothing. A child's internal layout is unchanged: for example, `facts columns="2"` retains its two-column layout, and `dtable` retains its data rows and columns.
+
+**Attributes:** the applicable global attributes are `id`, `visible`, `disabled`, and `tooltip` (§4.7). `id` is optional unless the group is referenced by a form rule; it follows the same message-wide uniqueness and kebab-case rules as other IDs. `visible="false"` hides the group and its contents. Within a form, `disabled="true"` makes its descendant fields inactive; it has no effect on information-only content.
+
+**Composition:**
+
+- At the message root, a group may contain information components, including `facts` and `dtable`. Standalone interactive components remain outside root-level groups; grouped interactive fields belong inside a `form`.
+- As a direct child of `form`, a group may contain the information components and fields already allowed in that form. `dtable`, `confirm`, and `form` remain forbidden there. `rule` declarations remain direct children of `form`.
+- A group cannot contain another group. Groups are transparent to the existing three-level semantic depth limit; see §8 for the exact child lists and depth accounting.
+- Grouping does not create a task, renderer zone, ID namespace, or field prefix. Root-level groups remain in `shared_history`; groups inside a form participate in that form's lifecycle and zones (§10.3).
+
+**Form rules:** a group with an `id` may be a `targets` entry for `action="visible"` or `action="enabled"`. Its effective state gates its descendants and combines with each child's own state; it never overrides a child's `visible="false"` or `disabled="true"`. A group cannot be a `when-*` or `state-*` source because it has no captured value or correctness state. Grouped fields can still be sources and targets under their own IDs (§6.5).
+
+```pml
+[PML:form id="order" submit-label="Save"]
+  [PML:toggle id="invoice" label="I need an invoice" /]
+
+  [PML:group id="billing-details"]
+    [PML:text type="title"]Billing details[/PML:text]
+    [PML:input id="tax-id" type="text" label="Tax ID" required="true" /]
+  [/PML:group]
+
+  [PML:rule action="visible" targets="billing-details" when-invoice="true" /]
+[/PML:form]
+```
+
+When `invoice` is false, `tax-id` is hidden, does not block submit, and is omitted from the interaction:
+
+```
+[[INTERACTION id="order" field-invoice="false"]]
+```
+
+When `invoice` is true and the user enters `ABC123`, a valid submit is:
+
+```
+[[INTERACTION id="order" field-invoice="true" field-tax-id="ABC123"]]
+```
+
+The group ID `billing-details` never contributes a `field-*` attribute. An `enabled` rule can target the same group to gate its fields without hiding the group's visible content. Agents must negotiate a renderer with v1.13 group support before emitting `group`; older renderers retain the unknown-component behavior in §12.2, which does not guarantee preservation of grouped content or rules.
 
 ---
 
@@ -1015,7 +1077,9 @@ Confirmation dialog. Renders a modal with two actions: accept or cancel.
 
 ### 6.5 form
 
-Field container with **submit, optional cancel, and optional conditional rules**. A valid `form` must contain at least one interactive child (`input`, `toggle`, or `choice`). It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each active interactive child (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
+Field container with **submit, optional cancel, and optional conditional rules**. A valid `form` must contain at least one field (`input`, `toggle`, or `choice`), directly or inside a `group`. It is the first PML component to capture multiple values in a single action: when the user presses the submit button and local validation passes, the ChatApp emits **a single** `[[INTERACTION]]` with a `field-<id>` attribute for each active field (multi-field format from §7.3). When `cancel-label` is present, the ChatApp also renders a cancel button that emits an empty interaction (no fields, no value).
+
+**Form members (v1.13):** the form's direct non-`rule` children and the direct children of its groups. A **field** is an `input`, `toggle`, or `choice` member. The renderer discovers members by walking the children in document order and traversing each group at its position. Existing auxiliary relationships are unchanged: `opt` and `fact`, for example, are not independent form members. In this section, rules, validation, and serialization apply to grouped fields as well as direct fields.
 
 #### Attributes
 
@@ -1031,17 +1095,18 @@ Field container with **submit, optional cancel, and optional conditional rules**
 | -------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
 | Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw` | Yes | For labels, instructions, visual separators, narrative sections, and captured-value previews. |
 | Passive container: `facts`                                                       | Yes     | Useful to show readonly summaries before submit (`form > facts > fact` = 3 levels).              |
+| Structural container: `group`                                                   | Yes     | Groups allowed passive content and fields in one column. Grouped fields belong to this form; group IDs are not fields. |
 | Interactives: `input` (all subtypes), `toggle`, `choice` (single and multi)      | Yes     | Each active one contributes **one attribute** `field-<id>` to the final `[[INTERACTION]]` (§7.3). |
-| Auxiliary: `rule`                                                                | Yes     | Declares conditional visibility/enabled behavior for direct form children. Does not render or emit interactions. |
+| Auxiliary: `rule`                                                                | Yes     | Declares conditional visibility/enabled behavior for form members. Must remain a direct child of `form`; does not render or emit interactions. |
 | `dtable`                                                                         | **No**  | Would exceed the maximum depth of 3 (`form > dtable > dtrow > dtcol` = 4).                       |
 | `confirm`                                                                        | **No**  | Confirm is a self-contained modal action; mixing it with form creates submit ambiguity.          |
 | Nested `form`                                                                    | **No**  | v1.5 forbids nested forms; the agent must use separate flows.                                    |
 
 #### Validity condition: at least one interaction
 
-A `form` is valid only if it contains at least one direct interactive child: `input`, `toggle`, or `choice`.
+A `form` is valid only if it contains at least one field: `input`, `toggle`, or `choice`, directly or inside a group. A form whose fields are all grouped is valid. A group without any fields does not satisfy this requirement.
 
-Passive children (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`) may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
+Passive children (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`), including those inside groups, may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
 
 #### Conditional behavior: PML:rule
 
@@ -1070,9 +1135,9 @@ AND aceptar-condiciones == true
 | Attribute              | Required | Type                    | Description |
 | ---------------------- | -------- | ----------------------- | ----------- |
 | `action`               | Yes      | `visible` / `enabled`   | Effective state controlled by the rule. |
-| `targets`              | Yes      | comma-separated IDs     | Direct non-`rule` children of the same `form` affected by the rule. |
-| `when-<field-id>`      | No       | string                  | Value condition. The source must be an interactive child of the same `form`. |
-| `state-<field-id>`     | No       | `correct` / `incorrect` | Runtime correctness condition. The source must be an interactive child of the same `form`. |
+| `targets`              | Yes      | comma-separated IDs     | Form members of the same `form` affected by the rule, including groups and grouped members. |
+| `when-<field-id>`      | No       | string                  | Value condition. The source must be a field of the same `form`, directly or inside a group. |
+| `state-<field-id>`     | No       | `correct` / `incorrect` | Runtime correctness condition. The source must be a field of the same `form`, directly or inside a group. |
 
 At least one `when-*` or `state-*` condition is required. Multiple conditions are combined with AND. `PML:rule` has no OR, nested expressions, arithmetic, regex, scripts, or custom formulas.
 
@@ -1080,7 +1145,9 @@ At least one `when-*` or `state-*` condition is required. Multiple conditions ar
 
 `action="visible"` controls effective visibility. When the rule conditions are true, the targets are visible; when they are false, the targets are hidden. `rule` components themselves cannot be targets.
 
-`action="enabled"` controls effective enabled state. When the rule conditions are true, interactive targets are enabled; when they are false, they are disabled. Passive targets do not have enabled behavior; if an `enabled` rule targets a passive component, the renderer ignores that target and logs a warning.
+`action="enabled"` controls effective enabled state. When the rule conditions are true, interactive targets are enabled; when they are false, they are disabled. A structural `group` is also a valid target: its enabled state gates all of its descendant fields. Passive information targets do not have enabled behavior; if an `enabled` rule targets an information component, the renderer ignores that target and logs a warning.
+
+Both actions may target a group or an individual grouped member by its own ID. Group state is inherited in addition to the member's own state; targeting a child cannot bypass a hidden or disabled group. Groups have no value or correctness state and cannot be condition sources. IDs of `rule` components and auxiliary children such as `opt` and `fact` are not valid targets or sources.
 
 If multiple rules control the same `target + action`, all of them must evaluate to true for the target to keep that effective state. This keeps conflict resolution deterministic and avoids "last rule wins" ordering.
 
@@ -1134,24 +1201,33 @@ Correctness lets rules depend on native component validation without duplicating
 
 ##### Effective state, validation, and serialization
 
-The renderer computes two effective states for every form child:
+The renderer computes two effective states for every form member:
 
 ```text
 effective-visible
 effective-enabled
 ```
 
-`effective-visible` starts from the `visible` attribute (default `true`). `effective-enabled` starts from the inverse of `disabled` (default enabled). Matching `rule` components can only narrow these states.
+For a member's local state, visibility starts from the `visible` attribute (default `true`), and enabled state starts from the inverse of `disabled` (default enabled). Matching `rule` components can only narrow these states. For passive information components, only visibility has an effect.
 
-An interactive child is active only when both are true:
+**Group inheritance (v1.13):** first compute each group's state from its own base attributes and rules. For a member inside a group, combine its local state with that group's effective state:
+
+```text
+effective-visible = local-visible AND group-effective-visible
+effective-enabled = local-enabled AND group-effective-enabled
+```
+
+For a direct member that is not inside a group, the inherited terms are `true`, preserving the existing behavior. A group's disabled state affects fields, not the display of passive content. Hiding or disabling a group does not clear its fields' current values. Rules continue reading those values and each field's own correctness (§6.5 above), independently of inherited state; group inheritance does not create a new correctness state or recursive condition evaluation.
+
+A field is active only when both are true:
 
 ```text
 active = effective-visible AND effective-enabled
 ```
 
-Validation applies only to active interactive children. Therefore, a hidden or disabled child does not block submit even if it declares `required="true"` or any other validation attribute.
+Validation applies only to active fields. Therefore, a field hidden or disabled by its own state or its group does not block submit even if it declares `required="true"` or any other validation attribute.
 
-Submit serialization includes only active interactive children. Inactive children do not contribute `field-*` attributes. The agent must interpret a missing `field-<id>` in a conditional form as "not active in the submitted state", not as an empty answer.
+Submit serialization includes only active fields. Inactive fields do not contribute `field-*` attributes. The agent must interpret a missing `field-<id>` in a conditional form as "not active in the submitted state", not as an empty answer.
 
 The renderer evaluates rules before the initial form is shown, using declared initial values/defaults, and re-evaluates them whenever a source value changes.
 
@@ -1161,7 +1237,7 @@ Recommended renderer order:
 current values
 → component correctness
 → PML:rule evaluation
-→ effective visible/enabled state
+→ effective visible/enabled state, including group inheritance
 → submit validation
 → interaction serialization
 ```
@@ -1172,7 +1248,8 @@ current values
 
 1. The user freely edits the form's interactive children. **While the form is active, its children do not emit individual `[[INTERACTION]]`** — their values stay in the ChatApp's local state.
 2. The user presses the submit button (text: `submit-label`).
-3. The ChatApp evaluates `PML:rule` components and computes the effective state of all form children.
+3. The ChatApp evaluates `PML:rule` components and computes the effective state of all form members, applying each group's inherited state to its contents.
+   - If no fields are active, the ChatApp shows a generic form-level error, remains in `live_capture`, and emits no interaction. This prevents an empty submit from being mistaken for cancel.
 4. The ChatApp runs **local validation** on all active interactive children:
    - `required="true"` → value must not be empty.
    - `validate="<regex>"` → value must match (input text).
@@ -1206,7 +1283,7 @@ current values
 
 #### Interaction serialization
 
-For a form with active interactive children `child-1`, `child-2`, ..., `child-n` with values `v1`, `v2`, ..., `vn`:
+For a form with active fields `child-1`, `child-2`, ..., `child-n` with values `v1`, `v2`, ..., `vn`:
 
 ```
 [[INTERACTION id="form-id" field-child-1="v1" field-child-2="v2" ... field-child-n="vn"]]
@@ -1215,12 +1292,13 @@ For a form with active interactive children `child-1`, `child-2`, ..., `child-n`
 **Precise rules:**
 
 - **Each active interactive child of the form contributes exactly one attribute** prefixed with `field-` to the bracket. The suffix is the child's declared `id`. The **value** is the captured value, URL-encoded per §7.2 when it comes from free user text.
+- **Grouped fields use exactly the same rule.** Serialize each active field using its own declared ID, without a group-ID prefix or an extra nesting level. A group contributes no `value` or `field-*` attribute.
 - **Inactive interactive children are omitted**. A child is inactive when its effective visibility or effective enabled state is false.
 - **All active interactive children are always included**, even if they are `readonly` or the user did not touch them (in which case the value is the empty string `""` or the initial `value` declared by the agent).
 - For `choice multi="true"`, selected ids are serialized **comma-separated** inside the value (same as a standalone choice): `field-days="mon,tue,wed"`.
 - For catalog-backed `input` or `choice` children (§6.1.10), the serialized value is the catalog **key** field, not the display label: `field-cliente="RFC-001"`.
 - For `toggle`, the value is `value-on` or `value-off` as appropriate (default `"true"` / `"false"`).
-- The order of the attributes in the serialization should respect the order of the children in the form (legibility recommendation; not semantic).
+- The order of the attributes in the serialization should respect document order, traversing each group's contents at that group's position (legibility recommendation; not semantic).
 - **There are no forbidden IDs in form children.** Declarative IDs live in their own namespace: `id="id"`, `id="value"`, `id="error"` are valid because they serialize to `field-id`, `field-value`, `field-error`, without colliding with the reserved bracket names (`id`, `value`).
 
 #### Bracket namespaces
@@ -1354,12 +1432,13 @@ The form is **a single task**. It goes through the full lifecycle like any other
 
 #### Edge cases
 
-- **Form with no interactive children** (only passive content + submit): invalid. The renderer omits submit/cancel controls, renders the passive content as narrative/plain flow, and logs a warning. Use `choice` for a CTA or `confirm` for explicit acceptance/cancellation.
+- **Form with no fields**, directly or inside groups (only passive content + submit): invalid. The renderer omits submit/cancel controls, renders the passive content as narrative/plain flow, and logs a warning. Use `choice` for a CTA or `confirm` for explicit acceptance/cancellation.
+- **Hidden or disabled group**: its fields are inactive, even if individually visible and enabled. They do not validate or serialize; their current values are retained for later reactivation and rule conditions. Passive content remains visible in a disabled but visible group.
 - **`disabled` child**: is not active; it does not validate, does not block `required`, and does not contribute to submit serialization. Use `readonly` for immutable values that must still be submitted.
 - **`readonly` child**: remains active regarding validation and serialization; visually it appears editable but does not accept changes.
 - **Optional active child with no initial value**: is included with value `""` in the serialization.
 - **Duplicate IDs across children**: the renderer applies the rules from §8.3 (renders the first, ignores the rest; the second does not contribute to the interaction).
-- **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`): the renderer treats it as plain text and omits it from the interaction. Logs a warning.
+- **Forbidden child detected** (e.g. `confirm`, `dtable`, nested `form`), directly or through a group: the renderer treats it as plain text and omits it from the interaction. Logs a warning. Grouping never bypasses form restrictions.
 - **Submit with zero valid interactive children**: invalid form; no `[[INTERACTION]]` is emitted.
 - **Conditional form with zero active interactive children at submit time**: invalid submit state; no `[[INTERACTION]]` is emitted and the renderer shows a generic form-level error.
 - **v1.5 ↔ v1.6 compatibility**: a v1.6 renderer accepts brackets without a prefix (v1.5 format) during the transition period and processes them as if they carried an implicit `field-`. A v1.5 agent sent to a v1.6 renderer still works. A v1.6 agent sent to a v1.5 renderer emits `field-*` attributes that the v1.5 renderer silently ignores ("unknown attributes are dropped" rule); the agent receives the degraded interaction without fields. For maximum compatibility, the agent should negotiate version via the envelope metadata before choosing the format to emit.
@@ -1465,6 +1544,7 @@ The format `[[INTERACTION id="..." value="..."]]` extends **naturally** to compo
 4. If a sub-component returns multiple selections (an embedded `choice multi="true"`), its value is serialized with commas: `field-days="mon,tue,wed"`.
 5. **No forbidden names** for child IDs: the `field-*` namespace isolates data from bracket metadata.
 6. **(v1.7)** A valid conditional `form` submit includes at least one `field-*` attribute, because a valid submit state must contain at least one active interactive child.
+7. **(v1.13)** Fields inside a `group` retain this same serialization. Group IDs never become field attributes or prefixes, and grouping introduces no new interaction format.
 
 > **v1.5 ↔ v1.6 compatibility.** v1.5 had introduced the `form` component emitting fields as bare attributes (`name="..."`), reserving the names `id` and `value`. v1.6 isolates them under the `field-*` prefix and removes the reservation. v1.6 renderers accept both formats during the transition; v1.6 agents always emit with the prefix. See Appendix E.
 
@@ -1585,7 +1665,9 @@ The renderer updates the same component instead of adding a new one.
 | Container            | May directly contain                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
 | (message root)       | Any standalone component                                                                                        |
-| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice`, `rule` |
+| `group` at message root | Information components: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, `dtable` |
+| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice`, `group`, `rule` |
+| `group` inside `form` | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice` |
 | `choice`             | `opt` (one or more)                                                                                             |
 | `facts`              | `fact` (one or more)                                                                                            |
 | `dtable`             | `dtrow` (one or more)                                                                                           |
@@ -1595,13 +1677,14 @@ The renderer updates the same component instead of adding a new one.
 
 ### 8.2 Nesting rules
 
-1. **Maximum depth: 3 levels**, given by the chains `dtable > dtrow > dtcol`, `choice > opt`, `facts > fact`, `form > choice > opt`, and `form > facts > fact`.
-2. Interactive components **do not nest other interactives**, except for `form`, which is the explicit container of interactive children.
+1. **Maximum semantic depth: 3 non-`group` levels**, given by the chains `dtable > dtrow > dtcol`, `choice > opt`, `facts > fact`, `form > choice > opt`, and `form > facts > fact`. **(v1.13)** A structural `group` does not add a semantic level. Thus `group > dtable > dtrow > dtcol` and `form > group > choice > opt` are permitted: each has three non-`group` levels and four syntactic levels. With no nested groups, the maximum syntactic depth is four. Messages without groups keep the original depth limit unchanged.
+2. Interactive components **do not nest other interactives**, except for `form`, which owns its fields directly or through a structural group. A group is not an interaction owner.
 3. Passive components do not nest components (except for the container/child pairs in the table above).
-4. `form` **does not allow**: `dtable` (would exceed depth 3), `confirm` (modal incompatible with unified submit), or nested `form`.
+4. `form` **does not allow**, directly or through a group: `dtable` (would exceed three non-`group` levels), `confirm` (modal incompatible with unified submit), or nested `form`.
 5. **(v1.6)** There are no forbidden names for the `id`s of form children. The `field-*` prefix of the multi-field bracket (§7.3) isolates the field namespace from the metadata one, so `id="id"`, `id="value"` or `id="error"` on children are valid and serialize to `field-id`, `field-value`, `field-error`. This repeals the v1.5 reserved-IDs rule.
-6. **(v1.6.1)** A `form` must contain at least one direct interactive child (`input`, `toggle`, or `choice`). Passive-only forms are invalid.
+6. A `form` must contain at least one field (`input`, `toggle`, or `choice`). **(v1.13)** The field may be direct or inside a group. Passive-only forms, including forms containing only passive groups, are invalid.
 7. **(v1.7)** `rule` is valid only as a direct child of `form`; it must be self-closing and cannot contain child components.
+8. **(v1.13)** `group` is valid only at the message root or as a direct child of `form`. Groups cannot nest. Its context-specific child lists above are exhaustive; a root-level group cannot contain standalone interactives or a `form`.
 
 ### 8.3 ID rules
 
@@ -1623,10 +1706,11 @@ The renderer updates the same component instead of adding a new one.
 5. **Always** end self-closing components with ` /]` (with space).
 6. **Always** close containers with `[/PML:type]`.
 7. When receiving `[[INTERACTION ...]]`, decode the URL-encoded values **before** reasoning about them. In multi-field mode, read the `field-<sub-id>` attributes ignoring the `field-` prefix to map to the child's `id` in the form.
-8. **In `form`**: include at least one interactive child (`input`, `toggle`, or `choice`) and give a unique `id` to each interactive child (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`. **(v1.6)** Child IDs are free: there are no reserved names anymore.
+8. **In `form`**: include at least one field (`input`, `toggle`, or `choice`), directly or inside a group, and give each field a unique `id` (the suffix of the `field-*` attribute in the interaction will be exactly that `id`); never nest `confirm`, `dtable`, or another `form`, even through a group. **(v1.6)** Child IDs are free: there are no reserved names anymore.
 9. **When re-emitting a `form`** after a server error: use the same `id` of the form and populate `value="..."` on each child with the last known user value; add `error="..."` only on failed children (§7.6).
 10. **When emitting multi-field interactions (v1.6)**: always use the `field-` prefix in the bracket attribute names (`field-name="..."`, not `name="..."`). The unprefixed v1.5 format is deprecated and v1.6 renderers accept it only as a temporary alias.
-11. **When using `rule` inside `form`**: use only `action="visible"` or `action="enabled"`, reference direct children of the same form, and express conditions with `when-<field-id>="..."` or `state-<field-id>="correct|incorrect"`.
+11. **When using `rule` inside `form`**: keep the declaration directly inside `form`, use only `action="visible"` or `action="enabled"`, target members of the same form (including groups and their members), and express conditions using direct or grouped fields with `when-<field-id>="..."` or `state-<field-id>="correct|incorrect"`. A group is a possible target, not a condition source.
+12. **When using `group` (v1.13)**: use its implicit single column, preserve document order, and assign an `id` when targeting it with a form rule. Use only its context-specific allowed children and do not nest groups. Emit it only to renderers supporting v1.13 groups; preserve existing component syntax and interaction formats.
 
 ### 9.2 Error-tolerant generation
 
@@ -1640,7 +1724,8 @@ Renderers should apply the following policies when receiving imperfect PML:
 | Unclosed tag                  | Try to auto-close; if not possible, truncate     |
 | Non-permitted child component | Render as plain text                             |
 | Duplicate ID                  | Render the first, ignore the rest                |
-| Depth > 3                     | Flatten to level 3                               |
+| Semantic depth > 3            | Flatten to three non-`group` levels; `group` is depth-transparent (§8.2) |
+| Nested `group`                | Omit the nested group and its contents; log warning |
 
 ---
 
@@ -1759,6 +1844,7 @@ task_controls     live interactive        component + feedback    (empty)
 ### 10.3 Applying the model to components
 
 - **Passive components** (text, markdown, image, media, attachment, map, contact-card, facts, divider, dtable, raw) render **directly in `shared_history`**. They do not traverse `task_narrative` or `task_controls`.
+- **Structural `group`** has no task or lifecycle of its own. At the message root, its passive contents render together in `shared_history`. Inside a form, the group and all its contents stay within the form's existing zones and lifecycle, including its final snapshot; they do not create extra task zones or independently active controls. Form-contained passive content follows the form's placement rather than the standalone passive rule above.
 - **Interactive components** (input, toggle, choice, confirm, form) traverse the full lifecycle: `first_rendering` → `live_capture` → `final_rendering`.
 - In a `form`, the lifecycle applies to the form as **a unit**: children do not have their own lifecycle; they live inside the form's `task_controls` while `live_capture` lasts, and the final snapshot includes the full form with resolved values.
 
@@ -1803,6 +1889,8 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 
 **divider:** use to separate groups, not after every element.
 
+**group:** present related children as one visual unit in a single vertical column, preserving document order. Use renderer-native spacing to distinguish groups. Keep each child's internal layout and accessibility semantics. Within a form, apply inherited visibility/enabled state immediately and keep the form's single submit/cancel controls.
+
 **input:** open the appropriate keyboard based on `type`; validate as soon as possible without interrupting; show `error` near the field; ask for permissions in context before invoking GPS/camera/files.
 
 **toggle:** describe the active state in the `label`; the whole row must be tappable.
@@ -1811,7 +1899,7 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 
 **confirm:** `title` that names the decision (not just "Confirm"); `message` with the consequence in one sentence; `style="danger"` only for destructive actions; the cancel button is always visible and emits `[[INTERACTION ...]]` just like the confirm one.
 
-**form:** keep few fields per form (ideally ≤7); clear labels above each field; group narratively with `text` or `divider`; submit button at the end, full-width, with `submit-label` that describes the action ("Create account", "Confirm order"); do not use for destructive actions (that is `confirm`); show validation errors inline right below each failed field; keep `rule` sets small and recalculate conditional state immediately when a source value changes.
+**form:** keep few fields per form (ideally ≤7); clear labels above each field; use `group` for related blocks and `text` or `divider` for narrative framing; submit button at the end, full-width, with `submit-label` that describes the action ("Create account", "Confirm order"); do not use for destructive actions (that is `confirm`); show validation errors inline right below each failed field; keep `rule` sets small and recalculate conditional state immediately when a source value changes.
 
 ---
 
@@ -1828,14 +1916,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | Attribute in camelCase                                 | Low      | Accept as alias of the kebab-case                                                                                                     |
 | Invalid value                                          | Medium   | Use default                                                                                                                           |
 | Disallowed child                                       | Medium   | Render as text                                                                                                                        |
-| Depth > 3                                              | Medium   | Flatten to level 3                                                                                                                    |
+| Semantic depth > 3                                     | Medium   | Flatten to three non-`group` levels; group wrappers do not count toward semantic depth (§8.2)                                           |
+| Nested `group`                                         | Medium | Omit the nested group and its contents, including any fields; log warning                                                               |
+| `rule` declared inside `group`                         | Medium | Ignore that rule and log warning; declarations must be direct form children                                                            |
 | Unreadable PML                                         | High     | Render as plain text                                                                                                                  |
-| Forbidden child inside `form` (`confirm`, `dtable`, `form`) | Medium | Omit from the form; does not contribute to `[[INTERACTION]]`; log warning                                                              |
-| `form` without any interactive child (`input`, `toggle`, `choice`) | Medium | Omit submit/cancel controls, render passive content as narrative/plain flow, log warning                                                |
+| Forbidden child inside `form` (`confirm`, `dtable`, `form`), directly or through a group | Medium | Omit from the form; does not contribute to `[[INTERACTION]]`; log warning                                               |
+| `form` without any field (`input`, `toggle`, `choice`), directly or inside groups | Medium | Omit submit/cancel controls, render passive content as narrative/plain flow, log warning                                          |
 | Malformed `rule` (missing `action`, missing `targets`, no conditions, unsupported action/state) | Medium | Ignore the rule, render the form without that conditional behavior, log warning                                                         |
 | `rule` references unknown source or target IDs | Medium | Ignore the missing references; if the rule has no valid targets or no valid conditions left, ignore the rule and log warning             |
+| `rule` uses a group or other non-field ID as a condition source | Medium | Ignore the invalid reference using the same policy as an unknown source; groups have no value/correctness state                      |
 | `rule` targets another `rule` | Low | Ignore that target and log warning                                                                                                      |
-| `rule action="enabled"` targets passive components | Low | Ignore those passive targets and log warning                                                                                            |
+| `rule action="enabled"` targets information components | Low | Ignore those passive targets and log warning; structural groups are valid enabled targets                                              |
 | Multi-field bracket with attributes without `field-` prefix (v1.5 format) | Low | Accept as a temporary alias in v1.6 renderers; log migration warning. v1.6 agents must always emit `field-*`.                          |
 | Multi-field bracket with `field-*` attributes sent to a v1.5 parser | Low | The v1.5 parser silently ignores them; the agent receives the degraded interaction (only `id`). Negotiate version via the envelope.   |
 
@@ -1864,7 +1955,17 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 ### 12.1 Versioning
 
 ```
-PML v1.12 — June 2026 (this specification)
+PML v1.13 — October 2026 (this specification)
+  - New structural group: implicit single column, optional id, no own interaction
+  - Form rules can target group visibility/enabled state
+  - Grouped fields inherit group state and retain their own field-* keys
+  - Group wrappers do not count toward the three-level semantic depth limit
+  - No nested groups; existing form child restrictions remain in force
+  - Existing components and interaction wire formats unchanged
+```
+
+```
+PML v1.12 — June 2026
   - dtable adds optional display-columns
   - display-columns selects up to four visible columns for compact responsive tables
   - Non-displayed columns remain part of each row and may be exposed as row details
@@ -1986,6 +2087,7 @@ PML v1.1 — April 2026
 2. **Incompatible syntax changes** only in major versions (v2.0).
 3. Renderers must **ignore unknown components** or render them as plain text.
 4. Agents must **decode** attributes in `kebab-case` even if they were trained with `camelCase`.
+5. **Backward compatibility is mandatory for additive components.** Preserve the syntax, defaults, behavior, and interaction wire format of previously valid PML. Existing renderers must remain able to process messages that use only the components they already support; adding a component must not require changes to those components. Support for a new component still requires renderer implementation and version negotiation. Unknown-component fallback is not a guarantee that new grouped content or rules will work on an older renderer.
 
 ### 12.3 Candidates for future versions
 
@@ -1997,7 +2099,7 @@ PML v1.1 — April 2026
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.13+ — new components:**
+**v1.14+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -2037,6 +2139,8 @@ PML v1.1 — April 2026
 │ confirm        │ interactive      │ Confirmation dialog                      │
 │ form           │ interactive      │ Container with submit/rules (multi-field)│
 │ rule           │ auxiliary·child  │ Conditional form behavior                │
+├────────────────┼──────────────────┼─────────────────────────────────────────┤
+│ group          │ structural       │ Related content in one vertical column   │
 └────────────────┴──────────────────┴─────────────────────────────────────────┘
 ```
 
@@ -2078,7 +2182,7 @@ std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "image"    | "media"    | "divider"| "raw"
                  | "attachment" | "map"     | "contact-card"
                  | "input"    | "toggle"   | "choice" | "confirm"
-                 | "form" ;
+                 | "form"     | "group" ;
 
 aux_component    = "opt" | "fact" | "dtrow" | "dtcol" | "rule" ;
 
@@ -2097,7 +2201,8 @@ field_attr       = "field-" sub_id "=" attr_value ; (* multi-field (v1.6) *)
 sub_id           = /[a-z][a-z0-9-]*/ ;
                    (* "id" is required; in single-value, "value" is        *)
                    (* included; in multi-field, one "field-<sub>" is       *)
-                   (* included per interactive child of the form.          *)
+                   (* included per active field, direct or grouped.       *)
+                   (* group IDs never produce fields or key prefixes.     *)
                    (* id-only interactions are valid only for form cancel. *)
                    (* v1.6 renderers accept bare attributes (v1.5 format)  *)
                    (* as a temporary alias during the transition.          *)
@@ -2112,17 +2217,30 @@ WS_eq            = "=" ;
 (*   dtable  → dtrow                                                     *)
 (*   dtrow   → dtcol                                                     *)
 (*   raw     → plain text (parser disabled)                              *)
+(*   group at root → text | markdown | divider | image | media            *)
+(*                   | attachment | map | contact-card | raw             *)
+(*                   | facts | dtable                                   *)
 (*   form    → text | markdown | divider | image | media | attachment   *)
 (*             | map | contact-card | raw                                *)
-(*             | facts | input | toggle | choice | rule                  *)
-(*             (FORBIDDEN: dtable, confirm, nested form)                  *)
-(*             (REQUIRES at least one input, toggle, or choice)           *)
+(*             | facts | input | toggle | choice | group | rule          *)
+(*   group in form → text | markdown | divider | image | media            *)
+(*                   | attachment | map | contact-card | raw | facts     *)
+(*                   | input | toggle | choice                          *)
+(*             (form restrictions apply through group as well:           *)
+(*              FORBIDDEN: dtable, confirm, nested form)                  *)
+(*             (REQUIRES at least one direct or grouped field)           *)
 (*             (rule is self-closing and only valid directly in form)      *)
+(*   group   → no nested group; valid only at root or directly in form    *)
+(*             container form only; empty group renders nothing          *)
 (*   rest    → no child components allowed                               *)
 (*                                                                       *)
-(* Maximum depth: 3 levels from the message root.                        *)
+(* Maximum semantic depth: 3 non-group levels from the message root.     *)
+(* group contributes zero semantic levels; at most one group per path.   *)
+(* Maximum syntactic depth with group: 4. No groups: original depth 3.   *)
 (* Edge cases: form > choice > opt, form > facts > fact,                 *)
 (*             dtable > dtrow > dtcol, choice > opt, facts > fact.       *)
+(*             group > dtable > dtrow > dtcol,                          *)
+(*             form > group > choice > opt, form > group > facts > fact. *)
 ```
 
 ---
@@ -2741,4 +2859,51 @@ only the first four valid names are used.
 
 ---
 
-_PML v1.12 — PEPPO Platform — June 2026_
+## Appendix M — Migration v1.12 → v1.13
+
+v1.13 is **additive**: it introduces the structural `group` component. Previously valid messages without groups keep their syntax, defaults, rendering behavior, and interaction formats. The new composition and inherited-state rules apply only when `group` is present.
+
+### M.1 New component: `group`
+
+`group` is a container with an implicit single vertical column in document order (§4.8). It accepts the global `id`, `visible`, `disabled`, and `tooltip` attributes. Its ID is optional unless a rule references it, and remains unique within the message. It has no captured value, correctness state, controls, submit/cancel action, or interaction of its own.
+
+At the message root, a group contains only information components and renders in `shared_history`. Inside a form, it groups allowed passive content and fields within that form's lifecycle. It does not create another task or renderer zone. Its children's internal layouts stay unchanged.
+
+### M.2 Form membership and rules
+
+Fields reached through a form's groups belong to the same form as direct fields. They count toward form validity, may be rule sources or targets under their own IDs, and validate/serialize when active. `rule` declarations remain direct children of `form`.
+
+- `action="visible"` may target a group and gates the visibility of its entire contents.
+- `action="enabled"` may target a group and gates its descendant fields. This is a structural-container behavior; enabled rules targeting information components retain the previous ignore-and-warn behavior.
+- Each member combines its own base/rule state with its group's effective state using AND. Showing or enabling a group cannot override a child's hidden or disabled state.
+- Hidden or disabled fields do not validate or serialize. Their current values remain available for rule evaluation and later reactivation.
+- A group is never a `when-*` or `state-*` source. It contributes no `field-*` key or group-ID prefix; fields continue to serialize with `field-` followed by their own declared ID.
+
+The complete visibility example and its interactions appear in §4.8. Changing that example's rule action to `enabled` keeps the group visible while making its fields inactive whenever `invoice` is false; the same field omission rules apply.
+
+### M.3 Composition and depth
+
+Groups are permitted only at the message root or directly inside `form`, and cannot nest. A group's allowed children depend on that context (§8.1). In particular, grouping cannot introduce `dtable`, `confirm`, or a nested form into a form, and cannot move a `rule` declaration away from its direct form parent.
+
+For the existing maximum depth, `group` is structurally transparent: only non-`group` components count toward the three-level semantic limit. Thus `form > group > choice > opt` and `group > dtable > dtrow > dtcol` are valid at four syntactic levels. Every previously permitted or forbidden group-free chain retains its status.
+
+### M.4 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| Previously valid v1.12 message → v1.13 renderer | Unchanged component syntax, defaults, behavior, and interaction wire format. |
+| Message without groups → existing renderer | No renderer change is required to continue handling its previously supported components. |
+| v1.13 message using groups → v1.13 renderer | Groups render in one column; form membership, rules, validation, and serialization include grouped fields. |
+| Message using groups → older renderer | Existing unknown-component fallback applies (§12.2); group contents and rules are not guaranteed to survive. Agents must negotiate v1.13 group support before emitting groups. |
+
+For a renderer without group support, the agent must emit a group-free form instead. When replacing group-level rules, apply the group's visibility/enabled constraints to the appropriate supported members explicitly; merely removing the wrapper is not equivalent to preserving its behavior.
+
+### M.5 Scope of this version
+
+- Single-column grouping only; no layout coordinates, grid templates, or nested groups.
+- No new field types, interaction formats, form actions, collapsible sections, or cross-field validation operators.
+- Existing components keep their own content and layout contracts.
+
+---
+
+_PML v1.13 — PEPPO Platform — October 2026_
