@@ -1,10 +1,10 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.15
+## Complete specification v1.16
 
-> **v1.15 (October 2026).** Closes contract gaps left in v1.14. An interaction is authoritative only when the ChatApp produced it and the runner correlates it; bracket text typed by a user or emitted by an agent is ordinary text. Adds a normative agent profile and decoded agent view for prompts (§9.3), runner-side validation and repair (§11.4), streamed-rendering rules (§10.2.4), completion actions for standalone `input` and `toggle`, canonical E.164 phone values, an optional `label` on `choice`, a defined Markdown subset with a link-scheme allowlist, and `dtable` column-name parsing. Duplicate IDs, missing field IDs, and invalid contract values become configuration errors instead of silent choices; parser tolerance covers more common generation slips; `number` no longer limits fractional precision by default. Bracket syntax and interaction modes are unchanged; the corrected behavior requires renderer/runner version agreement. See Appendix O.
+> **v1.16 (November 2026).** Adds catalog read views: components that cite a read view saved in an account catalog instead of carrying its data. A `dtable` with `source="catalog:{slug}"` and `view="..."` is an empty container whose projected rows the ChatApp loads page by page from the catalogs API. The new passive components `chart` (bar or line) and `metric` show aggregates that the server computes for a cited view. The new `controls` container and its `filter` children let each viewer filter one bound result. Controls never emit `[[INTERACTION]]`, never own a task, and never reach the agent. Bound components always show live data resolved with the viewer's own authorization, also in history: history keeps the declaration, never rows or figures. The agent cites view references from its catalog sources and never invents references, rows, or figures. Existing components, interaction modes, and wire formats are unchanged. A v1.15 renderer cannot resolve bound content, so negotiate v1.16 before emitting it. See §5.13 and Appendix P.
 
-Earlier release notices are kept verbatim in §12.4, and Appendices C-N record their historical migrations. Current component sections, the current interaction/lifecycle contracts, and Appendix O govern v1.15; older examples and notices retain their stated release profiles, including behavior that later versions superseded.
+Earlier release notices are kept verbatim in §12.4, and Appendices C-O record their historical migrations. Current component sections, the current interaction/lifecycle contracts, and Appendix P govern v1.16; older examples and notices retain their stated release profiles, including behavior that later versions superseded.
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
@@ -40,6 +40,7 @@ Earlier release notices are kept verbatim in §12.4, and Appendices C-N record t
     - [5.10 Captured-value echo-back contract](#510-captured-value-echo-back-contract)
     - [5.11 divider](#511-divider)
     - [5.12 raw](#512-raw)
+    - [5.13 Catalog read views](#513-catalog-read-views-v116)
 - [6. Interaction components](#6-interaction-components)
     - [6.1 input](#61-input)
         - [6.1.10 Catalog data source](#6110-catalog-data-source-v111)
@@ -75,6 +76,7 @@ Earlier release notices are kept verbatim in §12.4, and Appendices C-N record t
 - [Appendix M — Migration v1.12 → v1.13](#appendix-m--migration-v112--v113)
 - [Appendix N — Migration v1.13 → v1.14](#appendix-n--migration-v113--v114)
 - [Appendix O — Migration v1.14 → v1.15](#appendix-o--migration-v114--v115)
+- [Appendix P — Migration v1.15 → v1.16](#appendix-p--migration-v115--v116)
 
 ---
 
@@ -248,7 +250,9 @@ Hi Pedro, what would you like to do today?
 - `text` — Static text with style
 - `markdown` — Text with Markdown formatting
 - `facts` — Key-value pair list
-- `dtable` — Data table
+- `dtable` — Data table, inline or bound to a catalog read view (v1.16)
+- `chart` — **(v1.16)** Bar or line chart of a catalog read view
+- `metric` — **(v1.16)** Single aggregate figure of a catalog read view
 - `image` — Static image
 - `media` — Video or audio
 - `attachment` — Download/open card for a captured file
@@ -269,14 +273,19 @@ Hi Pedro, what would you like to do today?
 
 - `group` — Single-column container for related information components or form content
 
+**View controls (v1.16; viewer-local, no interaction of their own):**
+
+- `controls` — Filters that each viewer applies to one catalog-bound result in the same message (§5.13.5)
+
 **Auxiliary components (only valid inside their container):**
 
 - `opt` — Option inside `choice`
 - `fact` — Entry inside `facts`
 - `dtrow`, `dtcol` — Row and cell inside `dtable`
 - `rule` — Conditional behavior rule inside `form`
+- `filter` — **(v1.16)** One filter inside `controls`
 
-Information components render automatically in the chat flow. Interaction components require special handling: the ChatApp captures the user action and emits `[[INTERACTION]]` to the agent.
+Information components render automatically in the chat flow. Interaction components require special handling: the ChatApp captures the user action and emits `[[INTERACTION]]` to the agent. View controls change only what the current viewer sees in the result they target; they emit nothing.
 
 ### 4.7 Global attributes
 
@@ -284,7 +293,7 @@ These attributes may be applied to any component, except for the restrictions no
 
 | Attribute  | Applies to    | Type             | Description                                                              |
 | ---------- | ------------- | ---------------- | ------------------------------------------------------------------------ |
-| `id`       | All           | string           | Identifier. **Required on interactives**, optional on passives and `group`; required on any rule target. |
+| `id`       | All           | string           | Identifier. **Required on interactives**, optional on passives and `group`; required on any rule target. **(v1.16)** Required on `controls`, `filter`, and any `controls` target. |
 | `disabled` | Interactives, `group` | `true` / `false` | Disables the interaction; on `group`, gates descendant fields. Default: `false`. |
 | `visible`  | All           | `true` / `false` | If `false`, the component is not rendered. Default: `true`.              |
 | `tooltip`  | All           | string           | Help text shown on long-press (mobile) or hover (desktop).               |
@@ -429,7 +438,7 @@ Generic data table.
 | `columns`         | Yes      | string | Comma-separated column names.                                                                                                 |
 | `display-columns` | No       | string | **(v1.12)** Comma-separated subset of `columns`, up to four names, that should stay visible in compact responsive renderers. |
 
-**Content:** rows wrapped in `[PML:dtrow] ... [/PML:dtrow]`. Each cell is a self-closing `[PML:dtcol value="..." /]`. The number of cells per row must match the declared column count.
+**Content:** rows wrapped in `[PML:dtrow] ... [/PML:dtrow]`. Each cell is a self-closing `[PML:dtcol value="..." /]`. The number of cells per row must match the declared column count. **(v1.16)** A `dtable` bound to a catalog read view with `source` and `view` has no rows of its own; the ChatApp loads them (§5.13.2).
 
 ```
 [PML:dtable columns="Plan,Price,Agents,Messages" display-columns="Plan,Price"]
@@ -588,6 +597,124 @@ To show bold text, use the text component:
 ```
 
 > Inside `[PML:raw]` no attributes exist. The parser only looks for the exact closing tag `[/PML:raw]`.
+
+### 5.13 Catalog read views (v1.16)
+
+A catalog read view is a table, chart, or metric that the catalog's managers saved in an account catalog. It defines which fields are shown, the fixed filters, the aggregate and grouping, and which filters a viewer may change. PML does not describe that definition. A component cites the saved view, and the ChatApp resolves it through the catalogs API, as with the catalog data source (§6.1.10). Resolution is never delegated to the LLM: the agent never writes the rows, groups, or figures of a bound component.
+
+#### 5.13.1 Binding and resolution
+
+`dtable`, `chart`, and `metric` bind to a read view with two attributes:
+
+| Attribute | Required | Type   | Description |
+| --------- | -------- | ------ | ----------- |
+| `source`  | Yes*     | string | Catalog reference `catalog:{slug}`, with the same namespace and sources contract as §6.1.10. |
+| `view`    | Yes*     | string | Opaque reference to a read view saved in that catalog, as listed by the catalog sources contract. It is not a component ID: renderers and agents never parse it, and its case and punctuation are preserved. |
+
+\*Always required on `chart` and `metric`. On `dtable` the pair is optional, since an inline table has neither, but once one is present the other is required. A missing half is a configuration error for that component (§11.1). `key` and `display` belong to the data-source binding of §6.1.10 and are not used by read views.
+
+**Renderer resolution.** Given `source` and `view`, the ChatApp:
+
+1. Checks that `{slug}` is allowed for the current agent/account and that the current viewer may read that view.
+2. Loads the saved view and checks that its kind matches the component: a table for `dtable`, a chart for `chart`, a metric for `metric`. For `chart`, `type` must also match the saved chart type.
+3. Loads the result: projected rows, page by page, for `dtable`; for `chart` and `metric`, the aggregate the server computes over every matching row, never over a loaded page only.
+4. Applies the view's saved filters and, if a `controls` targets the component, the filters the viewer applied (§5.13.5).
+
+**Projection.** A viewer receives only the fields that the saved view shows. A chart or metric result contains group labels and figures, never row keys, row data, files, or secret values such as passwords. Fields the view uses only to filter, group, or measure do not become readable fields.
+
+**Live data.** A bound component always shows the current result for the person viewing it. The result is resolved with that viewer's authorization every time the component is rendered, also in `shared_history` (§10.2.1). History stores the declaration, never resolved rows, groups, or figures. Two viewers of the same message may see different results, and the same message may show different figures later. When a conversation needs fixed figures, the agent states them in narrative or in an inline `dtable` or `facts` built from its own tool results. It never describes a bound result as a snapshot, and it cannot see what each viewer sees.
+
+**Figures.** Renderers display figures exactly as resolved, formatting them only for the viewer's locale and without changing their precision. They never compute aggregates from rows. "No data" (no values to aggregate) is distinct from zero.
+
+**Unavailability.** If the catalog or view cannot be resolved (API unreachable, unknown slug or view, no read access), show an inline unavailable state with a retry action. A kind or `type` mismatch is a configuration error: show a native diagnostic and no data. Never fall back to inline data, another view, or the unprojected catalog. Other components in the message render normally, and the chat composer remains available.
+
+#### 5.13.2 Catalog-bound dtable
+
+| Attribute         | Required | Type   | Description |
+| ----------------- | -------- | ------ | ----------- |
+| `id`              | No*      | string | Component ID. \*Required when a `controls` targets the table. |
+| `source`, `view`  | Yes      | string | Read-view binding (§5.13.1). The view must be a table. |
+| `columns`         | Yes      | string | The view's column labels, in order, with the parsing rules of §5.4. |
+| `display-columns` | No       | string | Subset of `columns` that stays visible in compact renderers (§5.4). |
+
+The canonical form is an empty container with no `dtrow` children. A bound `dtable` that contains rows is a configuration error: inline and remote rows never mix. The saved view decides which fields are shown and in what order. When `columns` disagrees with the view, the view wins, and the renderer uses the view's labels and logs a warning. When two columns have the same label, the agent disambiguates them in `columns` (for example `Name (customer)` and `Name (supplier)`).
+
+The ChatApp loads rows page by page and offers more on demand. It may offer a search over the view's columns. Non-displayed columns follow §5.4: available through row details or another responsive affordance. Rows are not selectable; a bound `dtable` stays passive.
+
+```
+[PML:dtable id="sales" source="catalog:ventas" view="3f6c2b4e-8d1a-4c3f-9b7e-2a5d6e8f1c30"
+  columns="Folio,Customer,Status,Date" display-columns="Folio,Status"][/PML:dtable]
+```
+
+#### 5.13.3 chart
+
+Bar or line chart of a catalog read view. Self-closing.
+
+| Attribute        | Required | Type   | Description |
+| ---------------- | -------- | ------ | ----------- |
+| `id`             | No*      | string | Component ID. \*Required when a `controls` targets the chart. |
+| `source`, `view` | Yes      | string | Read-view binding (§5.13.1). The view must be a chart. |
+| `type`           | Yes      | `bar` / `line` | Chart type. Must match the saved view. |
+
+The saved view defines the aggregate (count, sum, average, minimum, or maximum), the measured field, and the grouping field. A date grouping uses a period of day, month, or year. A `line` chart always groups by a date.
+
+The renderer draws the groups in the order resolved, with the group of rows without a value last. It never truncates groups or merges them into an "Other" group: if the host refuses a result as too large, show the unavailable state. A line is not drawn across groups whose figure is missing. Every chart offers an equivalent data table with the same figures and can be understood without color or hover.
+
+```
+[PML:chart id="sales-by-month" source="catalog:ventas" view="8a1d4c2e-5b7f-4e9a-a3c6-0d2e4f6a8b10" type="line" /]
+```
+
+#### 5.13.4 metric
+
+Single aggregate figure of a catalog read view. Self-closing.
+
+| Attribute        | Required | Type   | Description |
+| ---------------- | -------- | ------ | ----------- |
+| `id`             | No*      | string | Component ID. \*Required when a `controls` targets the metric. |
+| `source`, `view` | Yes      | string | Read-view binding (§5.13.1). The view must be a metric. |
+
+The saved view defines the aggregate and its measured field. The renderer distinguishes a figure of zero, "no data", loading, and error.
+
+```
+[PML:metric id="total-sales" source="catalog:ventas" view="c2e4f6a8-1b3d-4f5a-9c7e-6d8f0a2b4c61" /]
+```
+
+#### 5.13.5 controls and filter
+
+`controls` lets the person viewing a message filter one bound result. It is a container of one to ten self-closing `filter` children.
+
+**`controls` attributes:**
+
+| Attribute | Required | Type   | Description |
+| --------- | -------- | ------ | ----------- |
+| `id`      | Yes      | string | Component ID. |
+| `target`  | Yes      | string | ID of exactly one bound `dtable`, `chart`, or `metric` in the same message. |
+
+**`filter` attributes:**
+
+| Attribute | Required | Type   | Description |
+| --------- | -------- | ------ | ----------- |
+| `id`      | Yes      | string | Component ID, unique in the message. |
+| `field`   | Yes      | string | Name of the catalog field the filter compares. |
+| `op`      | Yes      | `contains` / `eq` / `gte` / `lte` | Comparison: `contains` for text; `eq` for a single option or a yes/no field; `gte` (from) or `lte` (up to) for numbers, currency, dates, times, and date-times. |
+| `label`   | Yes      | string | Visible label and accessible name of the filter. |
+
+```
+[PML:dtable id="sales" source="catalog:ventas" view="3f6c2b4e-8d1a-4c3f-9b7e-2a5d6e8f1c30"
+  columns="Folio,Customer,Status,Date" display-columns="Folio,Status"][/PML:dtable]
+[PML:controls id="sales-filters" target="sales"]
+  [PML:filter id="status" field="status" op="eq" label="Status" /]
+  [PML:filter id="from" field="date" op="gte" label="From" /]
+[/PML:controls]
+```
+
+**Match with the saved view.** Each `filter` must match, by `id`, `field`, `op`, and `label`, a filter that the target's saved view declares. The renderer takes each filter's input kind and options from the saved view and the catalog, never from PML. A filter that matches nothing, a `target` that resolves to no bound component or to more than one, or a `controls` without filters makes the `controls` a configuration error. Show a native diagnostic in its place; the target still renders with its saved filters only. Fixed filters are not expressed in PML: they belong to the saved view.
+
+**Behavior.** The viewer edits filter values, then applies or clears them. Applying updates only that viewer's target result; clearing removes the applied values. An invalid value keeps the draft and shows the error on its filter; the renderer never shows a result that omits a requested filter. A value that has not been applied does not filter.
+
+**Never an interaction.** Filter values are viewer-local presentation state. They are never serialized as `[[INTERACTION]]`, never sent to the agent, never stored in `shared_history`, and never trigger a business action. A renderer may keep them for the same viewer, for example in its own navigation state. `controls` is not an interaction owner: it does not count toward the one-task-per-message rule, does not occupy `task_controls`, and is never deferred. It renders next to its target wherever the message is placed (§10.2.1).
+
+**Placement.** `controls` is valid only at the message root, at most once per message, and never inside `group` or `form`. `filter` is valid only as a direct child of `controls`. The target may be at the root or inside a root-level `group`.
 
 ---
 
@@ -884,7 +1011,7 @@ Optional attributes that bind an interactive component to an account catalog. Th
 
 \*When `source` is present, **both** `key` and `display` are **required**. A missing binding attribute is a configuration error: prevent the owning task/form from completing, preserve private drafts, show native recovery, and keep chat available (§11.1). Never omit a required member and submit the rest, or guess the missing binding.
 
-**`source` value namespace.** The attribute name `source` already exists on `input type="contact"` (v1.9) with reserved values `self`, `manual`, and `contacts`. Catalog binding uses a distinct value shape: `catalog:{slug}`. These namespaces do not overlap.
+**`source` value namespace.** The attribute name `source` already exists on `input type="contact"` (v1.9) with reserved values `self`, `manual`, and `contacts`. Catalog binding uses a distinct value shape: `catalog:{slug}`. These namespaces do not overlap. **(v1.16)** The same `catalog:{slug}` value, paired with `view` instead of `key` and `display`, binds `dtable`, `chart`, and `metric` to a saved read view (§5.13).
 
 **Which components and input types accept catalog `source`:**
 
@@ -1730,13 +1857,14 @@ The renderer applies this update only to the correlated rejected attempt, then r
 | Container            | May directly contain                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
 | (message root)       | Any standalone component                                                                                        |
-| `group` at message root | Information components: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, `dtable` |
+| `group` at message root | Information components: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, `dtable`, **(v1.16)** `chart`, `metric` |
 | `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice`, `group`, `rule` |
 | `group` inside `form` | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice` |
 | `choice`             | `opt` (one or more)                                                                                             |
 | `facts`              | `fact` (one or more)                                                                                            |
-| `dtable`             | `dtrow` (one or more)                                                                                           |
+| `dtable`             | `dtrow` (one or more); **(v1.16)** none when bound to a catalog read view (§5.13.2)                             |
 | `dtrow`              | `dtcol` (one or more)                                                                                           |
+| `controls`           | **(v1.16)** `filter` (one to ten)                                                                               |
 | `raw`                | Plain text (parser disabled)                                                                                    |
 | `text`, `markdown`   | Text (no nested components)                                                                                     |
 
@@ -1750,6 +1878,8 @@ The renderer applies this update only to the correlated rejected attempt, then r
 6. A `form` must contain at least one field (`input`, `toggle`, or `choice`). **(v1.13)** The field may be direct or inside a group. Passive-only forms, including forms containing only passive groups, are invalid.
 7. **(v1.7)** `rule` is valid only as a direct child of `form`; it must be self-closing and cannot contain child components.
 8. **(v1.13)** `group` is valid only at the message root or as a direct child of `form`. Groups cannot nest. Its context-specific child lists above are exhaustive; a root-level group cannot contain standalone interactives or a `form`.
+9. **(v1.16)** `chart`, `metric`, and `controls` are not valid inside `form`, directly or through a group. A bound `dtable` is excluded from forms like any `dtable`.
+10. **(v1.16)** `controls` is valid only at the message root, at most once per message, and never inside a `group`. `filter` is valid only as a direct child of `controls` and is self-closing. `controls` is not an interaction owner (§5.13.5).
 
 ### 8.3 ID rules
 
@@ -1759,6 +1889,8 @@ The renderer applies this update only to the correlated rejected attempt, then r
 - **Duplicate IDs (v1.15):** never pick one occurrence silently. If a duplicated ID belongs to an interactive component, a form member, or a group, or is referenced by a rule, the affected task/form is an invalid configuration (§11.1). Duplicates among information components outside a form render all of them, ignore the duplicated ID, and log a warning.
 
 `opt id` is a choice-local option token (§6.3), not a component ID. It matches `[a-z0-9][a-z0-9-]*`, may start with a digit, and must be unique only within its owning choice. Catalog keys are opaque strings under §6.1.10. Neither option tokens nor catalog keys can identify form fields or rule targets/sources.
+
+**(v1.16)** A `view` value is an opaque read-view reference (§5.13.1), not a component ID, and is never matched against IDs. The `target` of `controls` is a component ID of the same message. A duplicated ID on `controls`, `filter`, or a targeted bound component makes the `controls` a configuration error, as for other non-passive IDs.
 
 ---
 
@@ -1811,7 +1943,7 @@ Tolerances normalize input before validation: duplicate attributes produced by a
 This is the normative minimum an agent needs to emit and consume PML. Prompt authors copy this block into the base prompt instead of the full specification (§3), remove the lines for components the agent does not use, and add domain examples. Renderer and runner contracts (§6.6, §7.2 transport, §10, §11) are not part of the agent's prompt. If this profile and another section disagree, the other section governs and this profile must be corrected.
 
 ```text
-PML AGENT PROFILE v1.15
+PML AGENT PROFILE v1.16
 
 SYNTAX
 - Self-closing: [PML:type attr="value" /]   (space before /])
@@ -1837,6 +1969,18 @@ PASSIVE
 - Echo captured values: image for images, media type="audio|video" for audio/video,
   attachment for documents, map lat="..." lng="..." for locations,
   contact-card phone="..." for phones; facts or markdown otherwise. Never echo passwords.
+
+CATALOG READ VIEWS (only views your catalog sources list; the app loads the data)
+- [PML:dtable id="..." source="catalog:{slug}" view="{view-ref}" columns="..." display-columns="..."][/PML:dtable]
+  No dtrow. columns: the view's column labels, in order.
+- [PML:chart id="..." source="catalog:{slug}" view="{view-ref}" type="bar|line" /]   type as saved in the view
+- [PML:metric id="..." source="catalog:{slug}" view="{view-ref}" /]
+- [PML:controls id="..." target="{result-id}"]
+    [PML:filter id="..." field="..." op="contains|eq|gte|lte" label="..." /]
+  [/PML:controls]
+  Message root only, once per message; copy the filters the view declares.
+  Controls are not a task and never produce an interaction.
+- Never invent a view reference, rows, or figures. Each viewer sees live data you do not see.
 
 INTERACTIVE (id required; give every field a label)
 - [PML:input id="..." type="text|number|currency|contact|date|time|datetime|location|file" label="..." required="true" /]
@@ -1948,6 +2092,8 @@ The device's screen-space constraint forces optimization of screen usage, to avo
 - The `task_*` zones do not nest, do not stack, do not allow independent scrolling.
 
 **Context-based narrative placement (v1.14):** if a message starts or updates a task, all its root narrative and information components, including root-level groups, belong to that task's private `task_narrative`. Content inside a form stays inline in `task_controls`. A passive-only message with no task association goes directly to `shared_history`; passive-only task updates follow their envelope association instead. Do not publish task context merely because its component is passive.
+
+**Catalog-bound content (v1.16):** bound `dtable`, `chart`, and `metric` components (§5.13) are information components and are placed like any other. `controls` is placed with its target and does not make a message a task. The immutability of `shared_history` applies to the declaration: each viewer's renderer resolves bound data live, with that viewer's authorization, every time the message is shown. Resolved rows, figures, and filter values are never stored in history.
 
 **Task ownership and scheduling:** one message may declare at most one root interaction owner (`input`, `toggle`, `choice`, `confirm`, or `form`); a form counts as one regardless of its fields. If a message declares several owners, reject its task content atomically, keep its narrative private, show a native diagnostic, and emit no interaction. Never silently select one control. If a valid new task arrives while another is active, defer its whole message privately in arrival order until the current task terminates. The runner envelope distinguishes a new task from a correlated update to the current one. Preserve the active task and its drafts; a new message must not overwrite them. Deferred messages create no visible task zones. Explicit dismissal, cancellation, or expiry can release the current slot under the lifecycle contract below.
 
@@ -2113,6 +2259,13 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | Several root interaction owners in one message | High | Reject that message's task content atomically; keep narrative private, show diagnostic, emit no interaction                                  |
 | Bare v1.5 field attributes | Medium | Consumer accepts only under a negotiated legacy field format; otherwise reject, never guess                                                  |
 | Unsupported field format or encoding profile | High | Negotiate a supported exchange before completion; do not drop attributes or reinterpret their contents                                        |
+| **(v1.16)** Read-view binding with only one of `source` and `view`, or `chart`/`metric` without both | High | Configuration error for that component: native diagnostic, no data; never resolve a guessed view (§5.13.1) |
+| **(v1.16)** Bound `dtable` with `dtrow` children | High | Configuration error for that table; never mix inline and remote rows (§5.13.2) |
+| **(v1.16)** View kind or chart `type` differs from the saved view | High | Configuration error for that component: native diagnostic, no data (§5.13.1) |
+| **(v1.16)** Bound `columns` differ from the saved view | Low | Use the view's columns and labels; log warning (§5.13.2) |
+| **(v1.16)** `controls` with an unresolved or ambiguous `target`, no filters, more than ten, or a filter the view does not declare | Medium | Configuration error for the `controls`: diagnostic in its place; the target renders with its saved filters only (§5.13.5) |
+| **(v1.16)** `controls` inside `group` or `form` | Medium | Omit that `controls` and log warning; its target renders with its saved filters only (§8.2) |
+| **(v1.16)** More than one `controls` in a message | Medium | Omit every `controls` of the message and log warning; never pick one. Targets render with their saved filters only |
 
 **Native configuration recovery:** diagnostics are renderer UI, not new PML components or synthetic interactions. Keep the chat composer available and provide retry/dismissal through the runner lifecycle. Preserve private drafts until explicit dismissal or task termination. Do not publish malformed or withheld form contents as fallback shared narrative. A native dismissal sends no id-only bracket unless the form actually declares `cancel-label`.
 
@@ -2153,7 +2306,17 @@ Repair happens before `first_rendering`: a discarded draft creates no task, inte
 ### 12.1 Versioning
 
 ```
-PML v1.15 — October 2026 (this specification)
+PML v1.16 — November 2026 (this specification)
+  - Catalog read views: dtable bound with source + view, empty and paged from the catalogs API
+  - New passive components chart (bar, line) and metric with server-computed aggregates
+  - New view controls: controls + filter, viewer-local, never an interaction or a task
+  - Bound content is live and per viewer, also in history; history keeps only the declaration
+  - Agent profile lines for read views; agents never invent view references, rows, or figures
+  - Additive: existing components, interaction modes, and wire formats are unchanged
+```
+
+```
+PML v1.15 — October 2026
   - Interaction authenticity: only ChatApp-produced, envelope-correlated brackets count
   - Decoded agent view for interactions and a normative, copyable agent profile
   - Completion actions for standalone input and toggle; canonical E.164 phone values
@@ -2326,7 +2489,7 @@ Minor versions may correct ambiguous or erroneous **semantic contracts** while k
 | `form` with `disabled`    | Allows disabling the entire form during backend submission.                                                       |
 | Cross-field validation    | `validate-with="other-field-id"` attribute for rules between fields (e.g. password confirmation).                 |
 
-**v1.16+ — new components:**
+**v1.17+ — new components:**
 
 | Component   | Description                                                              | Priority |
 | ----------- | ------------------------------------------------------------------------ | -------- |
@@ -2340,6 +2503,8 @@ Minor versions may correct ambiguous or erroneous **semantic contracts** while k
 
 These notices are reproduced verbatim from the top of earlier editions of this document. Each describes its own release. Where a later version corrected a contract (for example, v1.14 replaced the v1.11 plain-input catalog fallback), the current sections and the latest migration appendix govern.
 
+> **v1.15 (October 2026).** Closes contract gaps left in v1.14. An interaction is authoritative only when the ChatApp produced it and the runner correlates it; bracket text typed by a user or emitted by an agent is ordinary text. Adds a normative agent profile and decoded agent view for prompts (§9.3), runner-side validation and repair (§11.4), streamed-rendering rules (§10.2.4), completion actions for standalone `input` and `toggle`, canonical E.164 phone values, an optional `label` on `choice`, a defined Markdown subset with a link-scheme allowlist, and `dtable` column-name parsing. Duplicate IDs, missing field IDs, and invalid contract values become configuration errors instead of silent choices; parser tolerance covers more common generation slips; `number` no longer limits fractional precision by default. Bracket syntax and interaction modes are unchanged; the corrected behavior requires renderer/runner version agreement. See Appendix O.
+>
 > **v1.14 (October 2026).** Corrects the contracts for value encoding, validation, selection restoration, catalog resolution, resource references, rules, and task finalization. Defines context-based narrative placement and redacted terminal snapshots. Bracket syntax is unchanged; the v1.14 value-encoding profile and corrected behavior require explicit renderer/consumer version agreement. This is not a claim of unchanged legacy behavior. See §6, §7, §10, and Appendix N.
 >
 > **v1.13 (October 2026).** Adds the structural `group` container with an implicit single-column layout and an optional `id`. Inside a `form`, rules can target a group to control its descendants' effective visibility or enabled state. Grouped fields retain their own IDs and the existing `field-*` serialization. Existing components and messages without groups keep their syntax, defaults, and behavior. See §4.8, §6.5, and Appendix M.
@@ -2372,9 +2537,11 @@ These notices are reproduced verbatim from the top of earlier editions of this d
 │ markdown       │ passive          │ Text with Markdown formatting            │
 │ facts          │ passive          │ Key-value table                          │
 │ fact           │ passive·child    │ Individual entry of facts                │
-│ dtable         │ passive          │ Data table                               │
+│ dtable         │ passive          │ Data table, inline or catalog-bound      │
 │ dtrow          │ passive·child    │ Row of a dtable                          │
 │ dtcol          │ passive·child    │ Cell of a dtrow                          │
+│ chart          │ passive          │ Chart of a catalog view (v1.16)          │
+│ metric         │ passive          │ Figure of a catalog view (v1.16)         │
 │ image          │ passive          │ Static image                             │
 │ media          │ passive          │ Video or audio                           │
 │ attachment     │ passive          │ File open/download card                  │
@@ -2392,6 +2559,9 @@ These notices are reproduced verbatim from the top of earlier editions of this d
 │ rule           │ auxiliary·child  │ Conditional form behavior                │
 ├────────────────┼──────────────────┼─────────────────────────────────────────┤
 │ group          │ structural       │ Related content in one vertical column   │
+├────────────────┼──────────────────┼─────────────────────────────────────────┤
+│ controls       │ view control     │ Viewer-local filters (v1.16)             │
+│ filter         │ view·child       │ One filter of controls (v1.16)           │
 └────────────────┴──────────────────┴─────────────────────────────────────────┘
 ```
 
@@ -2447,9 +2617,11 @@ std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "image"    | "media"    | "divider"| "raw"
                  | "attachment" | "map"     | "contact-card"
                  | "input"    | "toggle"   | "choice" | "confirm"
-                 | "form"     | "group" ;
+                 | "form"     | "group"
+                 | "chart"    | "metric"   | "controls" ;        (* v1.16 *)
 
-aux_component    = "opt" | "fact" | "dtrow" | "dtcol" | "rule" ;
+aux_component    = "opt" | "fact" | "dtrow" | "dtcol" | "rule"
+                 | "filter" ;                                     (* v1.16 *)
 
 (* ─── Attributes ───────────────────────────────────────────────────── *)
 attr_list        = { WS attr } ;
@@ -2484,6 +2656,9 @@ option_token     = /[a-z0-9][a-z0-9-]*/ ;
 (* Matching container types and context-specific shapes are semantic    *)
 (* constraints: group/raw require containers; rule is self-closing; a   *)
 (* catalog-backed choice may self-close, static choice needs opt.       *)
+(* v1.16: chart, metric, and filter are self-closing; controls is a     *)
+(* container; a dtable bound with source + view is an empty container.  *)
+(* controls and filter never produce an interaction in any mode.        *)
 
 WS               = /[ \t\r\n]+/ ;
 
@@ -2491,12 +2666,13 @@ WS               = /[ \t\r\n]+/ ;
 (* Only these container → direct child relationships are accepted:       *)
 (*   choice  → opt                                                       *)
 (*   facts   → fact                                                      *)
-(*   dtable  → dtrow                                                     *)
+(*   dtable  → dtrow   (bound to a read view: no children, v1.16)        *)
 (*   dtrow   → dtcol                                                     *)
+(*   controls → filter (1 to 10; root only, once per message, v1.16)     *)
 (*   raw     → plain text (parser disabled)                              *)
 (*   group at root → text | markdown | divider | image | media            *)
 (*                   | attachment | map | contact-card | raw             *)
-(*                   | facts | dtable                                   *)
+(*                   | facts | dtable | chart | metric (v1.16)          *)
 (*   form    → text | markdown | divider | image | media | attachment   *)
 (*             | map | contact-card | raw                                *)
 (*             | facts | input | toggle | choice | group | rule          *)
@@ -2504,7 +2680,8 @@ WS               = /[ \t\r\n]+/ ;
 (*                   | attachment | map | contact-card | raw | facts     *)
 (*                   | input | toggle | choice                          *)
 (*             (form restrictions apply through group as well:           *)
-(*              FORBIDDEN: dtable, confirm, nested form)                  *)
+(*              FORBIDDEN: dtable, confirm, nested form,                 *)
+(*              and v1.16 chart, metric, controls)                       *)
 (*             (REQUIRES at least one direct or grouped field)           *)
 (*             (rule is self-closing and only valid directly in form)      *)
 (*   group   → no nested group; valid only at root or directly in form    *)
@@ -3324,4 +3501,60 @@ These are contract examples for implementations, not a claim that a renderer or 
 
 ---
 
-_PML v1.15 — PEPPO Platform — October 2026_
+## Appendix P — Migration v1.15 → v1.16
+
+v1.16 adds catalog read views (§5.13). It is additive: existing components keep their syntax, defaults, behavior, and interaction wire format, and no interaction mode changes. Bound content needs a renderer that resolves read views, so negotiate v1.16 before emitting it (§12.2).
+
+### P.1 New components and attributes
+
+| Addition | v1.16 contract | Migration consequence |
+| -------- | -------------- | --------------------- |
+| `source` + `view` on `dtable` | Binds the table to a saved table view. The table is an empty container; the ChatApp loads projected rows page by page (§5.13.2). | Inline `dtable` is unchanged. A table bound with rows is a configuration error. |
+| `chart` | Self-closing, `source` + `view` + `type="bar\|line"`; the server computes the aggregate (§5.13.3). | New passive component. Renderers offer an equivalent data table. |
+| `metric` | Self-closing, `source` + `view`; one aggregate figure (§5.13.4). | New passive component. Zero and "no data" are distinct. |
+| `controls` + `filter` | One to ten filters for one bound result, at the message root, once per message. Each filter matches a filter declared by the saved view (§5.13.5). | New view-control category. Not an interaction owner; never emits `[[INTERACTION]]`. |
+| `view` | Opaque read-view reference from the catalog sources contract; never a component ID (§8.3). | Agents copy references from their sources and never build them. |
+| Agent profile | New "CATALOG READ VIEWS" block (§9.3). | Prompts that use read views add those lines; the others stay unchanged. |
+
+### P.2 Live content and history
+
+Bound components are resolved live, for each viewer and with that viewer's authorization, every time they are rendered, also in `shared_history`. History keeps the declaration, never resolved rows, figures, or filter values (§10.2.1). An agent that needs fixed figures writes them in narrative or in an inline `dtable` or `facts` built from its own tool results.
+
+### P.3 Conformance scenarios
+
+These are contract examples for implementations, not a claim that a renderer or runner has been updated or tested here.
+
+| Scenario | Required result |
+| -------- | --------------- |
+| `[PML:dtable source="catalog:ventas" view="v-1" columns="Folio,Status"][/PML:dtable]` and the viewer may read `v-1`. | The table loads the view's projected rows page by page. |
+| The same message is shown later to a viewer without access to `v-1`. | Unavailable state for that table; no rows, and the rest of the message renders. |
+| A bound `dtable` contains a `dtrow`. | Configuration error for that table; neither inline nor remote rows are shown. |
+| `[PML:chart source="catalog:ventas" view="v-2" type="line" /]` cites a saved bar chart. | Configuration error: native diagnostic, no figures. |
+| `[PML:metric source="catalog:ventas" /]` | Configuration error: missing `view`. |
+| A metric whose measured field has no values. | Shows "no data", not `0`. |
+| `controls` targets `sales`, and the viewer applies `status = paid`. | Only that viewer's table changes; no `[[INTERACTION]]`, no task, no history entry. |
+| A `filter` declares `op="gte"` while the saved view declares that filter with `lte`. | Configuration error for the `controls`; the table renders with its saved filters only. |
+| A message contains a `form` and a `controls`. | Valid: the form is the single task; `controls` does not count as an interaction owner. |
+| A message contains two `controls`. | Both are omitted with a warning; their targets render with their saved filters only. |
+| A `controls` inside a root-level `group`. | Omitted with a warning. |
+| The agent emits a `view` reference not listed by its sources. | Not resolved: unavailable state; the runner may re-prompt (§11.4). |
+
+### P.4 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| Bound `dtable` → v1.15 renderer | It shows an empty table with headers only and ignores `source` and `view`. Do not emit bound content until v1.16 is agreed. |
+| `chart`, `metric`, `controls` → v1.15 renderer | Unknown components: ignored or shown as plain text (§12.2). Describe results in narrative while v1.16 is not agreed. |
+| v1.15 message → v1.16 renderer | Unchanged. |
+
+### P.5 Scope of this version
+
+- No new interaction modes or form actions. Filter values never reach the agent; handing them to a runner or agent would require a future version.
+- `controls` targets exactly one result, lives only at the message root, and is not available inside `group` or `form`. Rules (`rule`) do not read or gate filters.
+- Only `bar` and `line` charts. Inline chart or metric data is not part of PML: figures come only from a saved view.
+- Rows of a bound `dtable` are not selectable and do not open details or history beyond the view's own columns.
+- `form-section`, cross-field validation, and `stepper` remain candidates (§12.3).
+
+---
+
+_PML v1.16 — PEPPO Platform — November 2026_
