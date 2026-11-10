@@ -10,7 +10,7 @@ This file orients Codex when working on this sub-project. It is complementary to
 
 ## What this project is
 
-A **pure Markdown specification, in English**. There is no code, build system, tests, dependencies, or infrastructure. The spec defines **PML (PEPPO Markup Language)**: a bracket-tag markup language for LLMs to emit interactive UI components inside a chat. Current version: **v1.16**.
+A **pure Markdown specification, in English**. There is no code, build system, tests, dependencies, or infrastructure. The spec defines **PML (PEPPO Markup Language)**: a bracket-tag markup language for LLMs to emit interactive UI components inside a chat. Current version: **v1.17**.
 
 This is not an implementation repo. Renderers, parsers, SDKs, and tooling live in other (future) repos.
 

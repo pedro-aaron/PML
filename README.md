@@ -1,10 +1,10 @@
 # PML — PEPPO Markup Language
 
-## Complete specification v1.16
+## Complete specification v1.17
 
-> **v1.16 (November 2026).** Adds catalog read views: components that cite a read view saved in an account catalog instead of carrying its data. A `dtable` with `source="catalog:{slug}"` and `view="..."` is an empty container whose projected rows the ChatApp loads page by page from the catalogs API. The new passive components `chart` (bar or line) and `metric` show aggregates that the server computes for a cited view. The new `controls` container and its `filter` children let each viewer filter one bound result. Controls never emit `[[INTERACTION]]`, never own a task, and never reach the agent. Bound components always show live data resolved with the viewer's own authorization, also in history: history keeps the declaration, never rows or figures. The agent cites view references from its catalog sources and never invents references, rows, or figures. Existing components, interaction modes, and wire formats are unchanged. A v1.15 renderer cannot resolve bound content, so negotiate v1.16 before emitting it. See §5.13 and Appendix P.
+> **v1.17 (November 2026).** Adds `readout`, a passive component that shows one read-only value laid out like a field. It fits anywhere `facts` does, including forms and their groups, so an edit form can show values the user cannot change next to the fields the user can. A readout never accepts input, never contributes to `[[INTERACTION]]`, never counts as a form field, and is never a rule source; use `input readonly="true"` when an immutable value must still be submitted. Existing components, interaction modes, and wire formats are unchanged. A v1.16 renderer does not know `readout`, so negotiate v1.17 before emitting it. See §5.14 and Appendix Q.
 
-Earlier release notices are kept verbatim in §12.4, and Appendices C-O record their historical migrations. Current component sections, the current interaction/lifecycle contracts, and Appendix P govern v1.16; older examples and notices retain their stated release profiles, including behavior that later versions superseded.
+Earlier release notices are kept verbatim in §12.4, and Appendices C-P record their historical migrations. Current component sections, the current interaction/lifecycle contracts, and Appendix Q govern v1.17; older examples and notices retain their stated release profiles, including behavior that later versions superseded.
 
 **PEPPO** — Platform for Engaging People and Processes via Omni-agents
 
@@ -41,6 +41,7 @@ Earlier release notices are kept verbatim in §12.4, and Appendices C-O record t
     - [5.11 divider](#511-divider)
     - [5.12 raw](#512-raw)
     - [5.13 Catalog read views](#513-catalog-read-views-v116)
+    - [5.14 readout](#514-readout-v117)
 - [6. Interaction components](#6-interaction-components)
     - [6.1 input](#61-input)
         - [6.1.10 Catalog data source](#6110-catalog-data-source-v111)
@@ -77,6 +78,7 @@ Earlier release notices are kept verbatim in §12.4, and Appendices C-O record t
 - [Appendix N — Migration v1.13 → v1.14](#appendix-n--migration-v113--v114)
 - [Appendix O — Migration v1.14 → v1.15](#appendix-o--migration-v114--v115)
 - [Appendix P — Migration v1.15 → v1.16](#appendix-p--migration-v115--v116)
+- [Appendix Q — Migration v1.16 → v1.17](#appendix-q--migration-v116--v117)
 
 ---
 
@@ -250,6 +252,7 @@ Hi Pedro, what would you like to do today?
 - `text` — Static text with style
 - `markdown` — Text with Markdown formatting
 - `facts` — Key-value pair list
+- `readout` — **(v1.17)** One read-only value laid out like a field
 - `dtable` — Data table, inline or bound to a catalog read view (v1.16)
 - `chart` — **(v1.16)** Bar or line chart of a catalog read view
 - `metric` — **(v1.16)** Single aggregate figure of a catalog read view
@@ -715,6 +718,39 @@ The saved view defines the aggregate and its measured field. The renderer distin
 **Never an interaction.** Filter values are viewer-local presentation state. They are never serialized as `[[INTERACTION]]`, never sent to the agent, never stored in `shared_history`, and never trigger a business action. A renderer may keep them for the same viewer, for example in its own navigation state. `controls` is not an interaction owner: it does not count toward the one-task-per-message rule, does not occupy `task_controls`, and is never deferred. It renders next to its target wherever the message is placed (§10.2.1).
 
 **Placement.** `controls` is valid only at the message root, at most once per message, and never inside `group` or `form`. `filter` is valid only as a direct child of `controls`. The target may be at the root or inside a root-level `group`.
+
+### 5.14 readout (v1.17)
+
+Read-only value laid out like a field: its label sits where a field's label sits, and its value appears in a field-shaped surface that visibly cannot be edited. It is an information component: it never accepts input, never takes focus as an editable control, never completes or owns a task, and never contributes a `field-*` attribute or a `value` to `[[INTERACTION]]`.
+
+| Attribute | Required | Type   | Description |
+| --------- | -------- | ------ | ----------- |
+| `label`   | Yes      | string | Visible label, also its accessible name. |
+| `value`   | No       | string | Text to show, already formatted for people, as in `fact value`. Absent or empty shows the renderer's localized empty marker (for example, "—"). |
+
+The applicable global attributes are `id` (optional; required when a rule targets it), `visible`, and `tooltip` (§4.7). `disabled`, `error`, `required`, and `readonly` do not apply: renderers ignore them and log a warning.
+
+```
+[PML:form id="edit-member" submit-label="Save"]
+  [PML:readout id="member-name" label="Name" value="Beto Pérez" /]
+  [PML:readout id="member-role" label="Role" value="Member" /]
+  [PML:input id="position" type="text" label="Position" value="Sales" /]
+[/PML:form]
+```
+
+A valid submit carries only the field:
+
+```
+[[INTERACTION id="edit-member" field-position="Sales"]]
+```
+
+**readout, readonly input, and facts.** Use `input readonly="true"` when an immutable value must still be submitted (§6.5). Use `readout` when the value is only shown and must not travel with the submit. Use `facts` for a summary of several values, and `readout` to show one value in line with the fields around it.
+
+**Placement.** `readout` is self-closing and is valid wherever `facts` is: at the message root, in a root-level `group`, in a `form`, and in a `group` inside a form (§8.1). Inside a form it is a passive member: it does not satisfy the at-least-one-field requirement, has no value or correctness state, and cannot be a `when-*` or `state-*` source. It may be a target of `action="visible"`; as for any information component, an `action="enabled"` target is ignored.
+
+**Values come from the author.** The agent or host writes `value`; the renderer never resolves it from a catalog or from account data. A host that renders an edit form for a saved record may fill `value` with that record's current value when it builds the message. History keeps the value as emitted. Never put a password, token, or other secret in `value`; the secret exception in §5.10 applies.
+
+**Rendering.** Use the label placement, width, and spacing of the fields of its form, with a surface that is visibly not editable: no caret and no text-entry affordance. Long values wrap and are never truncated; the user may select and copy them. Line breaks written as `&#10;` are preserved. Assistive technologies announce the label and the value as text, not as an editable control.
 
 ---
 
@@ -1247,7 +1283,7 @@ Field container with **submit, optional cancel, and optional conditional rules**
 
 | Child                                                                            | Allowed | Notes                                                                                            |
 | -------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
-| Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw` | Yes | For labels, instructions, visual separators, narrative sections, and captured-value previews. |
+| Simple passives: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, **(v1.17)** `readout` | Yes | For labels, instructions, visual separators, narrative sections, captured-value previews, and **(v1.17)** read-only values shown like fields but never submitted (§5.14). |
 | Passive container: `facts`                                                       | Yes     | Useful to show readonly summaries before submit (`form > facts > fact` = 3 levels).              |
 | Structural container: `group`                                                   | Yes     | Groups allowed passive content and fields in one column. Grouped fields belong to this form; group IDs are not fields. |
 | Interactives: `input` (all subtypes), `toggle`, `choice` (single and multi)      | Yes     | Each active one contributes **one attribute** `field-<id>` to the final `[[INTERACTION]]` (§7.3). |
@@ -1260,7 +1296,7 @@ Field container with **submit, optional cancel, and optional conditional rules**
 
 A `form` is valid only if it contains at least one field: `input`, `toggle`, or `choice`, directly or inside a group. A form whose fields are all grouped is valid. A group without any fields does not satisfy this requirement.
 
-Passive children (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`), including those inside groups, may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
+Passive children (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, **(v1.17)** `readout`), including those inside groups, may frame, explain, or summarize the form, but they cannot be the only content inside it. A narrative-only form with a submit button is not a form; use a `choice` with one `opt` for a CTA, or `confirm` when the action needs explicit acceptance/cancellation.
 
 #### Conditional behavior: PML:rule
 
@@ -1857,9 +1893,9 @@ The renderer applies this update only to the correlated rejected attempt, then r
 | Container            | May directly contain                                                                                            |
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
 | (message root)       | Any standalone component                                                                                        |
-| `group` at message root | Information components: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, `dtable`, **(v1.16)** `chart`, `metric` |
-| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice`, `group`, `rule` |
-| `group` inside `form` | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`), `facts`, `input`, `toggle`, `choice` |
+| `group` at message root | Information components: `text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, `facts`, `dtable`, **(v1.16)** `chart`, `metric`, **(v1.17)** `readout` |
+| `form`               | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, **(v1.17)** `readout`), `facts`, `input`, `toggle`, `choice`, `group`, `rule` |
+| `group` inside `form` | Simple passives (`text`, `markdown`, `divider`, `image`, `media`, `attachment`, `map`, `contact-card`, `raw`, **(v1.17)** `readout`), `facts`, `input`, `toggle`, `choice` |
 | `choice`             | `opt` (one or more)                                                                                             |
 | `facts`              | `fact` (one or more)                                                                                            |
 | `dtable`             | `dtrow` (one or more); **(v1.16)** none when bound to a catalog read view (§5.13.2)                             |
@@ -1880,6 +1916,7 @@ The renderer applies this update only to the correlated rejected attempt, then r
 8. **(v1.13)** `group` is valid only at the message root or as a direct child of `form`. Groups cannot nest. Its context-specific child lists above are exhaustive; a root-level group cannot contain standalone interactives or a `form`.
 9. **(v1.16)** `chart`, `metric`, and `controls` are not valid inside `form`, directly or through a group. A bound `dtable` is excluded from forms like any `dtable`.
 10. **(v1.16)** `controls` is valid only at the message root, at most once per message, and never inside a `group`. `filter` is valid only as a direct child of `controls` and is self-closing. `controls` is not an interaction owner (§5.13.5).
+11. **(v1.17)** `readout` is self-closing and has no children. It is never an interaction owner; inside a form it is a passive member, never a field (§5.14).
 
 ### 8.3 ID rules
 
@@ -1943,7 +1980,7 @@ Tolerances normalize input before validation: duplicate attributes produced by a
 This is the normative minimum an agent needs to emit and consume PML. Prompt authors copy this block into the base prompt instead of the full specification (§3), remove the lines for components the agent does not use, and add domain examples. Renderer and runner contracts (§6.6, §7.2 transport, §10, §11) are not part of the agent's prompt. If this profile and another section disagree, the other section governs and this profile must be corrected.
 
 ```text
-PML AGENT PROFILE v1.16
+PML AGENT PROFILE v1.17
 
 SYNTAX
 - Self-closing: [PML:type attr="value" /]   (space before /])
@@ -1964,6 +2001,8 @@ PASSIVE
 - [PML:markdown]...[/PML:markdown]  headings, bold, italics, lists, quotes, inline code,
   links with https:, mailto:, or tel: only. No tables, images, code blocks, or HTML.
 - [PML:facts][PML:fact label="..." value="..." /][/PML:facts]
+- [PML:readout label="..." value="..." /]   one read-only value shaped like a field, also inside
+  forms and their groups; it is never submitted. Never put a password or secret in it.
 - [PML:dtable columns="Plan,Price"][PML:dtrow][PML:dtcol value="..." /][PML:dtcol value="..." /][/PML:dtrow][/PML:dtable]
 - [PML:image url="https://..." alt="..." /]   [PML:divider /]
 - Echo captured values: image for images, media type="audio|video" for audio/video,
@@ -2196,6 +2235,8 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 
 **facts:** prefer `columns="1"` on mobile unless keys and values are very short; do not use for editable data.
 
+**readout (v1.17):** align it with the form's fields and keep their label style, but never style its value like an enabled field; wrap long values; do not use it for data the user must edit or submit.
+
 **dtable:** for wide tables, prefer a compact row summary with details expansion; honor `display-columns` when present. Horizontal scroll is acceptable only when expansion would hide essential comparison. Avoid long cells (use `facts` or `markdown` instead).
 
 **image:** always respect `alt`; reserve space before loading to prevent layout shifts.
@@ -2266,6 +2307,7 @@ Practical summary; extensive per-phase diagrams stay out of the main body of thi
 | **(v1.16)** `controls` with an unresolved or ambiguous `target`, no filters, more than ten, or a filter the view does not declare | Medium | Configuration error for the `controls`: diagnostic in its place; the target renders with its saved filters only (§5.13.5) |
 | **(v1.16)** `controls` inside `group` or `form` | Medium | Omit that `controls` and log warning; its target renders with its saved filters only (§8.2) |
 | **(v1.16)** More than one `controls` in a message | Medium | Omit every `controls` of the message and log warning; never pick one. Targets render with their saved filters only |
+| **(v1.17)** `readout` without `label`, or with `disabled`, `error`, `required`, or `readonly` | Low | Render it with its valid attributes and log warning; it never becomes a field or a rule source (§5.14) |
 
 **Native configuration recovery:** diagnostics are renderer UI, not new PML components or synthetic interactions. Keep the chat composer available and provide retry/dismissal through the runner lifecycle. Preserve private drafts until explicit dismissal or task termination. Do not publish malformed or withheld form contents as fallback shared narrative. A native dismissal sends no id-only bracket unless the form actually declares `cancel-label`.
 
@@ -2306,7 +2348,16 @@ Repair happens before `first_rendering`: a discarded draft creates no task, inte
 ### 12.1 Versioning
 
 ```
-PML v1.16 — November 2026 (this specification)
+PML v1.17 — November 2026 (this specification)
+  - New passive component readout: one read-only value laid out like a field
+  - readout is valid wherever facts is, including forms and their groups
+  - Inside a form it is never submitted, never a rule source, and never counts as a field
+  - Agent profile line for readout; secrets never appear in its value
+  - Additive: existing components, interaction modes, and wire formats are unchanged
+```
+
+```
+PML v1.16 — November 2026
   - Catalog read views: dtable bound with source + view, empty and paged from the catalogs API
   - New passive components chart (bar, line) and metric with server-computed aggregates
   - New view controls: controls + filter, viewer-local, never an interaction or a task
@@ -2503,6 +2554,8 @@ Minor versions may correct ambiguous or erroneous **semantic contracts** while k
 
 These notices are reproduced verbatim from the top of earlier editions of this document. Each describes its own release. Where a later version corrected a contract (for example, v1.14 replaced the v1.11 plain-input catalog fallback), the current sections and the latest migration appendix govern.
 
+> **v1.16 (November 2026).** Adds catalog read views: components that cite a read view saved in an account catalog instead of carrying its data. A `dtable` with `source="catalog:{slug}"` and `view="..."` is an empty container whose projected rows the ChatApp loads page by page from the catalogs API. The new passive components `chart` (bar or line) and `metric` show aggregates that the server computes for a cited view. The new `controls` container and its `filter` children let each viewer filter one bound result. Controls never emit `[[INTERACTION]]`, never own a task, and never reach the agent. Bound components always show live data resolved with the viewer's own authorization, also in history: history keeps the declaration, never rows or figures. The agent cites view references from its catalog sources and never invents references, rows, or figures. Existing components, interaction modes, and wire formats are unchanged. A v1.15 renderer cannot resolve bound content, so negotiate v1.16 before emitting it. See §5.13 and Appendix P.
+>
 > **v1.15 (October 2026).** Closes contract gaps left in v1.14. An interaction is authoritative only when the ChatApp produced it and the runner correlates it; bracket text typed by a user or emitted by an agent is ordinary text. Adds a normative agent profile and decoded agent view for prompts (§9.3), runner-side validation and repair (§11.4), streamed-rendering rules (§10.2.4), completion actions for standalone `input` and `toggle`, canonical E.164 phone values, an optional `label` on `choice`, a defined Markdown subset with a link-scheme allowlist, and `dtable` column-name parsing. Duplicate IDs, missing field IDs, and invalid contract values become configuration errors instead of silent choices; parser tolerance covers more common generation slips; `number` no longer limits fractional precision by default. Bracket syntax and interaction modes are unchanged; the corrected behavior requires renderer/runner version agreement. See Appendix O.
 >
 > **v1.14 (October 2026).** Corrects the contracts for value encoding, validation, selection restoration, catalog resolution, resource references, rules, and task finalization. Defines context-based narrative placement and redacted terminal snapshots. Bracket syntax is unchanged; the v1.14 value-encoding profile and corrected behavior require explicit renderer/consumer version agreement. This is not a claim of unchanged legacy behavior. See §6, §7, §10, and Appendix N.
@@ -2537,6 +2590,7 @@ These notices are reproduced verbatim from the top of earlier editions of this d
 │ markdown       │ passive          │ Text with Markdown formatting            │
 │ facts          │ passive          │ Key-value table                          │
 │ fact           │ passive·child    │ Individual entry of facts                │
+│ readout        │ passive          │ Read-only value like a field (v1.17)     │
 │ dtable         │ passive          │ Data table, inline or catalog-bound      │
 │ dtrow          │ passive·child    │ Row of a dtable                          │
 │ dtcol          │ passive·child    │ Cell of a dtrow                          │
@@ -2618,7 +2672,8 @@ std_component    = "text"     | "markdown" | "facts"  | "dtable"
                  | "attachment" | "map"     | "contact-card"
                  | "input"    | "toggle"   | "choice" | "confirm"
                  | "form"     | "group"
-                 | "chart"    | "metric"   | "controls" ;        (* v1.16 *)
+                 | "chart"    | "metric"   | "controls"          (* v1.16 *)
+                 | "readout" ;                                    (* v1.17 *)
 
 aux_component    = "opt" | "fact" | "dtrow" | "dtcol" | "rule"
                  | "filter" ;                                     (* v1.16 *)
@@ -2659,6 +2714,7 @@ option_token     = /[a-z0-9][a-z0-9-]*/ ;
 (* v1.16: chart, metric, and filter are self-closing; controls is a     *)
 (* container; a dtable bound with source + view is an empty container.  *)
 (* controls and filter never produce an interaction in any mode.        *)
+(* v1.17: readout is self-closing and never produces an interaction.    *)
 
 WS               = /[ \t\r\n]+/ ;
 
@@ -2673,12 +2729,13 @@ WS               = /[ \t\r\n]+/ ;
 (*   group at root → text | markdown | divider | image | media            *)
 (*                   | attachment | map | contact-card | raw             *)
 (*                   | facts | dtable | chart | metric (v1.16)          *)
+(*                   | readout (v1.17)                                  *)
 (*   form    → text | markdown | divider | image | media | attachment   *)
-(*             | map | contact-card | raw                                *)
+(*             | map | contact-card | raw | readout (v1.17)              *)
 (*             | facts | input | toggle | choice | group | rule          *)
 (*   group in form → text | markdown | divider | image | media            *)
 (*                   | attachment | map | contact-card | raw | facts     *)
-(*                   | input | toggle | choice                          *)
+(*                   | readout (v1.17) | input | toggle | choice        *)
 (*             (form restrictions apply through group as well:           *)
 (*              FORBIDDEN: dtable, confirm, nested form,                 *)
 (*              and v1.16 chart, metric, controls)                       *)
@@ -3557,4 +3614,43 @@ These are contract examples for implementations, not a claim that a renderer or 
 
 ---
 
-_PML v1.16 — PEPPO Platform — November 2026_
+## Appendix Q — Migration v1.16 → v1.17
+
+v1.17 adds `readout` (§5.14). It is additive: existing components keep their syntax, defaults, behavior, and interaction wire format, and no interaction mode changes. A renderer must support `readout` before an agent relies on it, so negotiate v1.17 first (§12.2).
+
+### Q.1 New component
+
+| Addition | v1.17 contract | Migration consequence |
+| -------- | -------------- | --------------------- |
+| `readout` | Self-closing passive with `label` (required) and `value`; valid wherever `facts` is (§5.14, §8.1). | New information component. Never serialized; never a field, a rule source, or a task. |
+| Agent profile | New PASSIVE line for `readout` (§9.3). | Prompts that show read-only values in forms add it; the others stay unchanged. |
+
+### Q.2 Conformance scenarios
+
+These are contract examples for implementations, not a claim that a renderer or runner has been updated or tested here.
+
+| Scenario | Required result |
+| -------- | --------------- |
+| A form with a `readout` and one `input`; the user submits. | The interaction carries only `field-<input-id>`. |
+| A form whose only members are `readout` components. | Not a valid form (no field): omit submit/cancel and render its content as narrative (§11.1). |
+| A rule with `when-<readout-id>="..."`. | Invalid source: the conjunction is false for its targets (§6.5). |
+| A rule with `action="visible"` that targets a readout. | The readout is shown or hidden with the rule. |
+| A `readout` without `label`. | Renders the value without a label and logs a warning. |
+| A `readout` with `required="true"` or `readonly="true"`. | The attribute is ignored with a warning; the readout is still never submitted. |
+
+### Q.3 Compatibility
+
+| Scenario | Behavior |
+| -------- | -------- |
+| `readout` → v1.16 renderer | Unknown component: ignored or shown as plain text (§12.2). Inside a form, the form still validates and submits its fields; only the shown value may be lost. Do not rely on it until v1.17 is agreed. |
+| v1.16 message → v1.17 renderer | Unchanged. |
+
+### Q.4 Scope of this version
+
+- No binding: a readout shows the value its author wrote; it does not resolve catalog keys or account data.
+- No formatting attributes: the author formats the value for people.
+- `form-section`, cross-field validation, and `stepper` remain candidates (§12.3).
+
+---
+
+_PML v1.17 — PEPPO Platform — November 2026_
